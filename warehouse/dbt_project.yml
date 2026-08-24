@@ -1,0 +1,23 @@
+name: white_lodge
+version: "1.0.0"
+profile: white_lodge
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  white_lodge:
+    # Staging and intermediate are views: zero storage cost, and they always
+    # reflect the current raw tables. Only the marts materialise, because they
+    # are what we query live and what has to answer fast.
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts

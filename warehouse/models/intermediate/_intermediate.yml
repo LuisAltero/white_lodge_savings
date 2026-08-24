@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: int_claim_cost
+    description: Valid claims with the NADAC cost as-of the fill date.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: cost_basis
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["as_of_fill_date", "earliest_available", "no_match"]
+
+  - name: int_claim_attribution
+    description: Each claim's partner and channel, derived from the converting lookup.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: partner
+        data_tests: [not_null]
+
+  - name: int_claim_revert
+    description: One effective reversal per claim (the earliest, if several).
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+
+  - name: int_claim_economics
+    description: The pbm_fee split between White Lodge and the partner. The money logic.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: partner_fee_cents
+        data_tests: [not_null]
+      - name: wls_net_fee_cents
+        description: Never negative — the least() cap guarantees it.
+        data_tests: [not_null]

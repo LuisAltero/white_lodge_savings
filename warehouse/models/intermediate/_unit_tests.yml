@@ -1,0 +1,175 @@
+version: 2
+
+# dbt unit tests: they run the *real* model SQL against fabricated inputs. That's
+# the difference between testing the logic and testing a copy of the logic
+# rewritten in Python — here, if someone edits `int_claim_economics.sql`, these
+# tests see the edit.
+#
+# They cover exactly the three things the brief calls tricky: the fee split,
+# reversal handling and malformed-record classification.
+
+unit_tests:
+  # ---------- fee split ----------
+
+  - name: fee_split_flat_partner
+    description: Flat cut in cents; the remainder stays with White Lodge.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c1", pbm_fee_cents: 500, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows:
+          - {claim_id: "c1", partner: "Kafka Rx"}
+      - input: ref('stg_partners')
+        rows:
+          - {partner: "Kafka Rx", fee_model: "flat", flat_fee_cents: 100, fee_rate: null}
+    expect:
+      rows:
+        - {claim_id: "c1", partner_fee_cents: 100, wls_net_fee_cents: 400, partner_fee_was_capped: false}
+
+  - name: fee_split_percentage_partner
+    description: >
+      Proportional cut. Flink Rx keeps 80% — the rate arrives already normalised
+      to 0-1 by stg_partners, so 80% of 500 is 400 to the partner.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c2", pbm_fee_cents: 500, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows:
+          - {claim_id: "c2", partner: "Flink Rx"}
+      - input: ref('stg_partners')
+        rows:
+          - {partner: "Flink Rx", fee_model: "percentage", flat_fee_cents: null, fee_rate: 0.8}
+    expect:
+      rows:
+        - {claim_id: "c2", partner_fee_cents: 400, wls_net_fee_cents: 100, partner_fee_was_capped: false}
+
+  - name: fee_split_percentage_rounds_without_losing_cents
+    description: >
+      33% of 101 cents is 33.33. It rounds to 33, and the remainder (68) goes to
+      White Lodge — the sum must still be 101. This is the invariant that stops
+      money being created or destroyed by rounding.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c3", pbm_fee_cents: 101, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows:
+          - {claim_id: "c3", partner: "Odd Rx"}
+      - input: ref('stg_partners')
+        rows:
+          - {partner: "Odd Rx", fee_model: "percentage", flat_fee_cents: null, fee_rate: 0.33}
+    expect:
+      rows:
+        - {claim_id: "c3", partner_fee_cents: 33, wls_net_fee_cents: 68}
+
+  - name: fee_split_caps_partner_at_collected_fee
+    description: >
+      The case that motivated the cap: a flat $1.00 fee against a $0.50 pbm_fee.
+      The partner takes the 50 cents collected, White Lodge keeps zero (never
+      negative), and the flag marks the row with the 50-cent contractual gap.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c4", pbm_fee_cents: 50, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows:
+          - {claim_id: "c4", partner: "Kafka Rx"}
+      - input: ref('stg_partners')
+        rows:
+          - {partner: "Kafka Rx", fee_model: "flat", flat_fee_cents: 100, fee_rate: null}
+    expect:
+      rows:
+        - {claim_id: "c4", partner_fee_cents: 50, wls_net_fee_cents: 0,
+           partner_fee_was_capped: true, capped_shortfall_cents: 50}
+
+  - name: fee_split_direct_claim_keeps_whole_fee
+    description: >
+      A claim that arrived with no lookup has no partner to pay out to. White
+      Lodge keeps the entire fee, and the row shows up as `direct` — it doesn't
+      vanish from the report.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c5", pbm_fee_cents: 700, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows: []
+      - input: ref('stg_partners')
+        rows: []
+    expect:
+      rows:
+        - {claim_id: "c5", partner: "direct", partner_fee_cents: 0, wls_net_fee_cents: 700}
+
+  - name: fee_split_zero_fee_partner_is_not_missing_data
+    description: >
+      Airflow Rx has `fee_cents = 0` — a zero-commission partner, not a partner
+      with no terms. A naive coalesce would treat the zero as absent and fall
+      through to the wrong rule. Here the payout is 0 and the model stays 'flat'.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "c6", pbm_fee_cents: 700, dq_reject_reason: null}
+      - input: ref('int_claim_attribution')
+        rows:
+          - {claim_id: "c6", partner: "Airflow Rx"}
+      - input: ref('stg_partners')
+        rows:
+          - {partner: "Airflow Rx", fee_model: "flat", flat_fee_cents: 0, fee_rate: null}
+    expect:
+      rows:
+        - {claim_id: "c6", partner: "Airflow Rx", fee_model: "flat",
+           partner_fee_cents: 0, wls_net_fee_cents: 700}
+
+  - name: fee_split_ignores_quarantined_claims
+    description: >
+      A quarantined claim never enters the money calculation. If it did, an
+      unknown NPI or a negative price would show up in revenue.
+    model: int_claim_economics
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "ok",  pbm_fee_cents: 300, dq_reject_reason: null}
+          - {claim_id: "bad", pbm_fee_cents: 300, dq_reject_reason: "unknown_npi"}
+      - input: ref('int_claim_attribution')
+        rows: []
+      - input: ref('stg_partners')
+        rows: []
+    expect:
+      rows:
+        - {claim_id: "ok", partner: "direct", partner_fee_cents: 0, wls_net_fee_cents: 300}
+
+  # ---------- reversals ----------
+
+  - name: revert_keeps_earliest_when_claim_reverted_twice
+    description: >
+      One claim is reverted twice in the sample. The first reversal is the one
+      that invalidated the fill; the second is producer noise. The earliest wins,
+      and `revert_event_count` preserves the fact that there were two.
+    model: int_claim_revert
+    given:
+      - input: ref('stg_reverts')
+        rows:
+          - {claim_id: "c1", revert_id: "r2", reverted_at: "2026-06-20 10:00:00", dq_reject_reason: null}
+          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", dq_reject_reason: null}
+    expect:
+      rows:
+        - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", revert_event_count: 2}
+
+  - name: revert_ignores_quarantined_reverts
+    description: >
+      An orphan reversal (pointing at a claim outside our universe) invalidates
+      nothing. Applying it would be inventing a reversal.
+    model: int_claim_revert
+    given:
+      - input: ref('stg_reverts')
+        rows:
+          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", dq_reject_reason: "orphan_claim_id"}
+    expect:
+      rows: []

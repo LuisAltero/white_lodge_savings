@@ -1,0 +1,7 @@
+partner,fee_cents,fee_percentage
+Kafka Rx,100,
+Hudi Rx,,50.0
+Flink Rx,,80.0
+Druid Rx,,20.0
+Iceberg Rx,20,
+Airflow Rx,0,

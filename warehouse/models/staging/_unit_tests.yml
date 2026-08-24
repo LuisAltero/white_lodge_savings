@@ -1,0 +1,85 @@
+version: 2
+
+# The CASE ordering in `stg_claims` *is* the data-quality policy. These tests pin
+# it down: reordering the rules breaks a test with a name, instead of silently
+# reclassifying thousands of rows.
+
+unit_tests:
+  - name: dq_classifies_each_defect
+    description: >
+      One example of every rejection reason, plus a clean row. The values came
+      from the real files — "one hundred" and "2026-13-45T99:99:99" are not
+      hypotheticals.
+    model: stg_claims
+    given:
+      - input: source("raw", "claims")
+        rows:
+          - {id: "ok",    npi: "111", ndc: "00078050161", price: "10.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+          - {id: "miss",  npi: "111", ndc: null,          price: "10.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+          - {id: "words", npi: "111", ndc: "00078050161", price: "one hundred", quantity: "thirty", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+          - {id: "badts", npi: "111", ndc: "00078050161", price: "10.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-13-45T99:99:99"}
+          - {id: "neg",   npi: "111", ndc: "00078050161", price: "-5.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+          - {id: "ghost", npi: "999", ndc: "00078050161", price: "10.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+      - input: ref("stg_pharmacies")
+        rows:
+          - {npi: "111", chain: "meridian"}
+    expect:
+      rows:
+        - {claim_id: "ok",    dq_reject_reason: null}
+        - {claim_id: "miss",  dq_reject_reason: "missing_required_field"}
+        - {claim_id: "words", dq_reject_reason: "unparseable_number"}
+        - {claim_id: "badts", dq_reject_reason: "unparseable_timestamp"}
+        - {claim_id: "neg",   dq_reject_reason: "non_positive_amount"}
+        - {claim_id: "ghost", dq_reject_reason: "unknown_npi"}
+
+  - name: dq_quarantines_both_sides_of_a_duplicate_id
+    description: >
+      140 UUIDs appear twice with *different* content — they are not copies.
+      Picking a winner would require an invented criterion, and picking wrong
+      corrupts revenue silently. Both sides go to quarantine.
+    model: stg_claims
+    given:
+      - input: source("raw", "claims")
+        rows:
+          - {id: "dup", npi: "111", ndc: "00078050161", price: "10.00",   quantity: "30",  pbm_fee: "7.00", timestamp: "2026-04-27T11:04:38"}
+          - {id: "dup", npi: "111", ndc: "00378335016", price: "1375.26", quantity: "100", pbm_fee: "5.99", timestamp: "2026-04-18T21:35:33"}
+      - input: ref("stg_pharmacies")
+        rows:
+          - {npi: "111", chain: "meridian"}
+    expect:
+      rows:
+        - {claim_id: "dup", dq_reject_reason: "duplicate_claim_id", price_cents: 1000}
+        - {claim_id: "dup", dq_reject_reason: "duplicate_claim_id", price_cents: 137526}
+
+  - name: dq_precedence_reports_the_most_structural_defect
+    description: >
+      A row with a missing field *and* an unknown NPI is reported as
+      `missing_required_field`. The ordering is not arbitrary: it's the defect
+      the data producer has to fix first.
+    model: stg_claims
+    given:
+      - input: source("raw", "claims")
+        rows:
+          - {id: "both", npi: "999", ndc: null, price: "10.00", quantity: "30", pbm_fee: "7.00", timestamp: "2026-05-01T10:00:00"}
+      - input: ref("stg_pharmacies")
+        rows:
+          - {npi: "111", chain: "meridian"}
+    expect:
+      rows:
+        - {claim_id: "both", dq_reject_reason: "missing_required_field"}
+
+  - name: money_becomes_integer_cents
+    description: >
+      $9.57 becomes 957 cents, not 956 and not a float with a binary tail. This
+      is the conversion that makes summing 41k claims exact and reproducible.
+    model: stg_claims
+    given:
+      - input: source("raw", "claims")
+        rows:
+          - {id: "m", npi: "111", ndc: "00078050161", price: "9.57", quantity: "30", pbm_fee: "7.34", timestamp: "2026-05-01T10:00:00"}
+      - input: ref("stg_pharmacies")
+        rows:
+          - {npi: "111", chain: "meridian"}
+    expect:
+      rows:
+        - {claim_id: "m", price_cents: 957, pbm_fee_cents: 734, dq_reject_reason: null}

@@ -1,0 +1,10 @@
+# profiles.yml is versioned next to the project (rather than in ~/.dbt) on
+# purpose: `git clone && python -m pipeline.run` has to work with no manual
+# setup. There is no credential here — DuckDB is a local file.
+white_lodge:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('WLS_DUCKDB_PATH', '../data/duckdb/warehouse.duckdb') }}"
+      threads: 8 # the box has 10 cores; leave headroom for the OS

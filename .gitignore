@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# dbt build artefacts
+warehouse/target/
+warehouse/logs/
+warehouse/dbt_packages/
+warehouse/.user.yml
+
+# The warehouse is rebuilt by `make pipeline` in ~10s. Versioning a 40 MB binary
+# that changes every run helps nobody.
+data/duckdb/
+
+# The NADAC CSV (~83 MB) is a cached external input, not a source.
+# `pipeline/nadac.py` re-downloads it if it isn't here.
+data/raw/nadac/

@@ -1,0 +1,116 @@
+version: 2
+
+models:
+  - name: fct_claim
+    description: >
+      Grain: one valid claim. The central table. The net_* columns already net
+      out reversals, so summing without a filter gives the right number.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: pharmacy_npi
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_pharmacy')
+                field: pharmacy_npi
+      - name: partner
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_partner')
+                field: partner_name
+      - name: ndc
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_drug')
+                field: ndc
+      - name: chain
+        data_tests: [not_null]
+      - name: filled_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: price_cents
+        data_tests: [not_null]
+      - name: is_reverted
+        data_tests: [not_null]
+      - name: net_wls_revenue_cents
+        data_tests: [not_null]
+
+  - name: fct_lookup
+    description: "Grain: one price-lookup event."
+    columns:
+      - name: lookup_id
+        data_tests: [unique, not_null]
+      - name: partner
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_partner')
+                field: partner_name
+      - name: claim_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_claim')
+                field: claim_id
+
+  - name: dim_pharmacy
+    description: One row per pharmacy, current state.
+    columns:
+      - name: pharmacy_npi
+        data_tests: [unique, not_null]
+      - name: chain
+        data_tests: [not_null]
+
+  - name: dim_partner
+    description: One row per partner, plus the synthetic 'direct' and 'unknown' members.
+    columns:
+      - name: partner_name
+        data_tests: [unique, not_null]
+
+  - name: dim_drug
+    description: One row per NDC observed in our events, with NADAC attributes.
+    columns:
+      - name: ndc
+        data_tests: [unique, not_null]
+
+  - name: dim_date
+    description: Calendar spine covering the event period.
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+
+  - name: dq_rejects
+    description: Quarantined records, with the reason and the original payload.
+    columns:
+      - name: reject_reason
+        data_tests: [not_null]
+
+  - name: mart_partner_performance
+    description: "Grain: one partner. Volume, retained revenue and funnel."
+    columns:
+      - name: partner
+        data_tests: [unique, not_null]
+
+  - name: mart_drug_economics
+    description: "Grain: one NDC. Where the margin is and what erodes it."
+    columns:
+      - name: ndc
+        data_tests: [unique, not_null]
+
+  - name: mart_funnel_daily
+    description: "Grain: day x partner x channel."
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_day, partner, channel]

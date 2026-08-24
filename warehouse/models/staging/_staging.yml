@@ -1,0 +1,86 @@
+version: 2
+
+models:
+  - name: stg_pharmacies
+    description: Clean pharmacy reference data, one row per NPI.
+    columns:
+      - name: npi
+        data_tests: [unique, not_null]
+      - name: chain
+        data_tests: [not_null]
+
+  - name: stg_partners
+    description: Commercial terms, with fee_percentage normalised to a 0-1 rate.
+    columns:
+      - name: partner
+        data_tests: [unique, not_null]
+      - name: fee_model
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["flat", "percentage", "unknown"]
+      - name: fee_rate
+        description: Fraction of the pbm_fee that goes to the partner (0-1).
+
+  - name: stg_claims
+    description: >
+      Typed claims. No row is dropped: dq_reject_reason NULL means usable, any
+      other value is the quarantine reason.
+    columns:
+      - name: claim_id
+        description: NULL only on rows rejected for a missing required field.
+      - name: dq_reject_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - missing_required_field
+                  - unparseable_number
+                  - unparseable_timestamp
+                  - non_positive_amount
+                  - duplicate_claim_id
+                  - unknown_npi
+              config:
+                where: "dq_reject_reason is not null"
+
+  - name: stg_reverts
+    description: Typed reversals, resolved against the analysable claim universe.
+    columns:
+      - name: dq_reject_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values:
+                  - missing_required_field
+                  - unparseable_timestamp
+                  - duplicate_revert_id
+                  - orphan_claim_id
+              config:
+                where: "dq_reject_reason is not null"
+
+  - name: stg_lookups
+    description: Typed lookups with normalised channel and resolved conversion.
+    columns:
+      - name: lookup_id
+        data_tests:
+          - unique:
+              config:
+                where: "dq_reject_reason is null"
+
+  - name: stg_nadac
+    description: Cost snapshots, one row per (ndc, effective_date).
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [ndc, effective_date]
+    columns:
+      - name: nadac_unit_cost_usd
+        description: >
+          Per-unit rate in USD, kept as DOUBLE on purpose — five decimal places
+          that only become cents after being multiplied by quantity.
+        data_tests: [not_null]
+      - name: drug_class
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["brand", "generic", "unknown"]

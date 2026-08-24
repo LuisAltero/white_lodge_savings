@@ -1,0 +1,21 @@
+# Pinned versions: the live sessions start with the project already running on
+# the machine, and a `pip install` that pulls a new release the night before is
+# risk with no upside.
+#
+# requirements.txt rather than Poetry/uv/pdm: it's the one thing that works on
+# any machine without installing a package manager first. The project has 7
+# direct dependencies — there's nothing to resolve that justifies the tool.
+
+# --- warehouse ---
+duckdb==1.5.5
+dbt-core==1.12.3
+dbt-duckdb==1.11.0
+
+# --- analysis and visualisation ---
+pandas==3.0.5
+plotly==6.9.0
+jupyter==1.1.1
+kaleido==1.3.0        # exports charts to PNG (only needed outside the notebook)
+
+# --- tests ---
+pytest==9.1.1

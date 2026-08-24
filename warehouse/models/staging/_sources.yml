@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Tables landed by `pipeline/land.py`. Every column is VARCHAR: landing
+      preserves the text that arrived, and every cast happens in staging, where
+      failing becomes a row in dq_rejects instead of a silent NULL.
+    schema: raw
+    tables:
+      - name: claims
+        description: One event per prescription fill, exactly as it came off the file.
+      - name: reverts
+        description: Reversals pointing at the claim they invalidate.
+      - name: lookups
+        description: Price lookups; they convert when they carry a claim_id.
+      - name: pharmacies
+        description: Pharmacy reference data (NPI -> chain).
+      - name: partners
+        description: Commercial terms per partner. Reference data.
+      - name: nadac
+        description: Weekly per-NDC cost snapshots published by CMS.
