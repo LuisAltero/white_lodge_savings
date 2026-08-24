@@ -15,8 +15,11 @@
 -- Reversal timing isn't lost: `reverted_at` and `hours_to_revert` sit on the
 -- same row, so "how long do reversals take" stays a single-table query.
 --
--- One claim is reverted twice in the sample. The first reversal is the one that
--- invalidated the fill; the second is producer noise. We keep the earliest.
+-- If a claim is ever reverted twice, the first reversal is the one that
+-- invalidated the fill and the second is producer noise, so we keep the
+-- earliest. In this sample the tie-break never fires: the 26 duplicate revert
+-- ids are quarantined in staging, and no claim reaches here with two reverts.
+-- `revert_event_count` is what proves that, rather than assuming it.
 
 with reverts as (
 

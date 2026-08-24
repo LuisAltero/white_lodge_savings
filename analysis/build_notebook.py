@@ -370,7 +370,8 @@ kpi([
     code("""
 weekly = q(\"\"\"
     select week_start, partner,
-           sum(claims) as claims, sum(reverted_claims) as reverted
+           sum(claims) as claims,
+           sum(claims_filled_then_reverted) as reverted
     from marts.mart_funnel_daily
     where partner <> 'unknown'
     group by 1, 2
@@ -378,9 +379,10 @@ weekly = q(\"\"\"
 weekly["rate"] = weekly.reverted / weekly.claims
 
 line(weekly, x="week_start", y="rate", color="partner",
-     title="Reversal rate by partner, by week",
-     note="Flat across all of them — a structural cost, not a one-off incident",
-     ytitle="reversal rate")
+     title="Reversal rate by partner, by fill week",
+     note="Cohort rate: claims filled that week that were ever reverted. Flat "
+          "across all of them — a structural cost, not a one-off incident",
+     ytitle="cohort reversal rate")
 """),
     md("""
 ---

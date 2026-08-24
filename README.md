@@ -295,14 +295,39 @@ nothing in scope uses them.
 The brief says a reversed claim is treated as if the fill never happened. So
 `is_reverted`, `reverted_at` and `hours_to_revert` live on `fct_claim`.
 
+The Kimball name for this shape is an **accumulating snapshot fact**: one row per
+claim, tracking a lifecycle with more than one milestone — the fill, and if it
+comes, the reversal. The row is rewritten when the later milestone lands.
+
 If reverts were a separate fact, every money question would be an anti-join
 ("claims not appearing in `fct_revert`") — precisely the join people forget under
 time pressure, producing inflated revenue that looks right. As a column, the same
 question is a `where`, and the `net_*` columns make the safe default automatic.
 
 Reversal *timing* isn't lost — "how long do reversals take" is still a
-single-table query. One claim is reverted twice in the sample; the earliest
-reversal wins and `revert_event_count` records that there were two.
+single-table query. If a claim were ever reverted twice the earliest reversal
+wins and `revert_event_count` records that there were two; no claim in this
+sample reaches that model with two reverts, since the 26 duplicate revert ids are
+quarantined in staging.
+
+**What it costs: history restates.** `net_*` is measured at `filled_date`, and
+712 of the 2,739 reversals (26%) land in a different month than the fill they
+cancel. A claim filled in March and reverted in July removes revenue *from
+March*, on the next run. March is therefore "March as we understand it today",
+not "March as we reported it in April" — the right default for the economics of a
+cohort of fills, but it means the warehouse has no "revenue as reported at month
+close". That would be a snapshot of `fct_claim` taken at a date, and it doesn't
+exist here.
+
+Because of that, `mart_funnel_daily` never says `reverted_claims`. It carries
+**two** measures on two different dates, and they only agree over the full period:
+
+| column | keyed on | answers |
+|---|---|---|
+| `claims_filled_then_reverted` | `filled_date` | of the fills we drove that day, how many stuck — the cohort measure, and what `cohort_reversal_rate` divides |
+| `reverts_on_day` (+ `revenue_reversed_cents`) | `reverted_at` | what we actually handed back that day — the activity measure |
+
+March: 524 by cohort, 358 by activity. July: 595 vs 800.
 
 ### 4. Money is integer cents, resolved at the last possible moment
 

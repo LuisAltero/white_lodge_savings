@@ -23,6 +23,27 @@
 -- remember `where not is_reverted`, the `net_*_cents` columns are already zeroed
 -- on reversed rows. Summing `net_wls_revenue_cents` with no filter at all gives
 -- the right number; `gross_*` stays available for measuring what was reversed.
+--
+-- ## Two dates: this is an accumulating snapshot
+--
+-- The Kimball name for this shape is an **accumulating snapshot fact**: one row
+-- per claim, tracking a lifecycle that has more than one milestone — the fill
+-- (`filled_at`) and, if it comes, the reversal (`reverted_at`). The row is
+-- rewritten when the later milestone lands, which is why a revert is a column
+-- here and not its own fact table.
+--
+-- The consequence has to be said out loud, because it isn't free: **`net_*` is
+-- measured at `filled_date`, so history restates.** 712 of the 2,739 reversals
+-- in this sample (26%) land in a different month than the fill they cancel — a
+-- claim filled in March and reverted in July removes revenue *from March*, on
+-- the next run. March's number is therefore "March as we understand it today",
+-- not "March as we reported it in April".
+--
+-- That is the right default for the questions in play (true economics of a
+-- cohort of fills), and it's the reason `mart_funnel_daily` keeps the two dates
+-- apart under two different names. What it costs is period comparability: if
+-- anyone ever needs "revenue as reported at month close", that's a snapshot of
+-- this table taken at a date, and it does not exist here. See the README.
 
 with claims as (
 
@@ -48,9 +69,13 @@ reverts as (
 
 ),
 
+-- `chain` comes from the dimension, not from stg_pharmacies. Both hold the same
+-- value, but a fact reaching back past its own dimension into staging is a
+-- second path to the same attribute — and the day someone adds a rule to
+-- dim_pharmacy, the fact quietly stops agreeing with it.
 pharmacies as (
 
-    select npi, chain from {{ ref('stg_pharmacies') }}
+    select pharmacy_npi, chain from {{ ref('dim_pharmacy') }}
 
 ),
 
@@ -98,7 +123,7 @@ assembled as (
     inner join economics   as e using (claim_id)
     left  join attribution as a using (claim_id)
     left  join reverts     as r using (claim_id)
-    left  join pharmacies  as p on c.npi = p.npi
+    left  join pharmacies  as p on c.npi = p.pharmacy_npi
 
 )
 

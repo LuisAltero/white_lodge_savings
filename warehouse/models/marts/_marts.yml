@@ -109,8 +109,28 @@ models:
         data_tests: [unique, not_null]
 
   - name: mart_funnel_daily
-    description: "Grain: day x partner x channel."
+    description: >
+      Grain: day x partner x channel. Carries two reversal measures on two
+      different dates — see the model header. `mart_partner_performance` and
+      `mart_drug_economics` keep the plain name `reverted_claims` because they
+      have no date grain, so there is nothing to confuse it with.
     data_tests:
       - unique_combination_of_columns:
           arguments:
             combination_of_columns: [date_day, partner, channel]
+    columns:
+      - name: claims_filled_then_reverted
+        description: >
+          Cohort measure, keyed on filled_date: of the claims filled this day,
+          how many were ever reverted. Divides into cohort_reversal_rate.
+        data_tests: [not_null]
+      - name: reverts_on_day
+        description: >
+          Activity measure, keyed on reverted_at: reversals that actually
+          happened this day. Answers "what did we hand back last week?".
+        data_tests: [not_null]
+      - name: revenue_reversed_cents
+        description: >
+          WLS revenue handed back on this day. Gross by construction — the net_*
+          columns are already zeroed on a reverted row.
+        data_tests: [not_null]

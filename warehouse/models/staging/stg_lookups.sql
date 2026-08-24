@@ -56,7 +56,7 @@ select
     cast(looked_up_at as date) as lookup_date,
 
     -- The claim_id survives only if it points at a claim that exists in our
-    -- universe (897 lookups point at claims that are absent or themselves
+    -- universe (1,480 lookups point at claims that are absent or themselves
     -- rejected). Without this, `count(claim_id)` in the funnel and `count(*)` in
     -- fct_claim would disagree and nobody would know which one to trust. The
     -- flag preserves the fact that a conversion was *claimed*.
