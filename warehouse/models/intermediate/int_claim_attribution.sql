@@ -29,9 +29,8 @@ with converted_lookups as (
         channel,
         looked_up_at,
         lookup_id
-    from {{ ref('stg_lookups') }}
-    where dq_reject_reason is null
-      and claim_id is not null
+    from {{ ref('int_lookups_resolved') }}
+    where claim_id is not null
 
 ),
 

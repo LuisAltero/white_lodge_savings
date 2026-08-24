@@ -24,8 +24,9 @@ models:
 
   - name: stg_claims
     description: >
-      Typed claims. No row is dropped: dq_reject_reason NULL means usable, any
-      other value is the quarantine reason.
+      Typed claims, source-local. No row is dropped: dq_reject_reason NULL means
+      the row is well formed, any other value is the quarantine reason. Whether
+      its pharmacy is one of ours is decided in int_claims_scoped.
     columns:
       - name: claim_id
         description: NULL only on rows rejected for a missing required field.
@@ -39,12 +40,13 @@ models:
                   - unparseable_timestamp
                   - non_positive_amount
                   - duplicate_claim_id
-                  - unknown_npi
               config:
                 where: "dq_reject_reason is not null"
 
   - name: stg_reverts
-    description: Typed reversals, resolved against the analysable claim universe.
+    description: >
+      Typed reversals, source-local. Whether the claim they invalidate exists is
+      decided in int_reverts_scoped.
     columns:
       - name: dq_reject_reason
         data_tests:
@@ -54,12 +56,13 @@ models:
                   - missing_required_field
                   - unparseable_timestamp
                   - duplicate_revert_id
-                  - orphan_claim_id
               config:
                 where: "dq_reject_reason is not null"
 
   - name: stg_lookups
-    description: Typed lookups with normalised channel and resolved conversion.
+    description: >
+      Typed lookups with normalised channel. claim_id comes out as it arrived;
+      conversion is resolved in int_lookups_resolved.
     columns:
       - name: lookup_id
         data_tests:

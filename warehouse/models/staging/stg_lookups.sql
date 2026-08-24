@@ -1,4 +1,5 @@
 -- Price lookups — the top of the funnel. 177k events, the largest source here.
+-- Source-local: typing and normalisation only, no `ref()` to another model.
 --
 -- Two policy choices, and neither of them is dropping the row:
 --
@@ -13,6 +14,11 @@
 --    are legitimate low-volume channels; `APP` is just uppercase. We lowercase,
 --    and send empty to `unknown`. Rejecting on unknown channel would be staging
 --    deciding which lines of business exist.
+--
+-- `claim_id` comes out here exactly as it arrived. Deciding whether it points at
+-- a claim we can actually analyse needs the claim universe, so that resolution
+-- — and the `converted` flag that comes with it — lives in
+-- `int_lookups_resolved`.
 
 with source as (
 
@@ -33,36 +39,16 @@ parsed as (
         _source_file
     from source
 
-),
-
-with_claim as (
-
-    select
-        l.*,
-        c.claim_id is not null as claim_is_known
-    from parsed as l
-    left join (
-        select claim_id from {{ ref('stg_claims') }} where dq_reject_reason is null
-    ) as c using (claim_id)
-
 )
 
 select
     lookup_id,
+    claim_id,
     ndc,
     coalesce(partner, 'unknown') as partner,
     coalesce(channel, 'unknown') as channel,
     looked_up_at,
     cast(looked_up_at as date) as lookup_date,
-
-    -- The claim_id survives only if it points at a claim that exists in our
-    -- universe (1,480 lookups point at claims that are absent or themselves
-    -- rejected). Without this, `count(claim_id)` in the funnel and `count(*)` in
-    -- fct_claim would disagree and nobody would know which one to trust. The
-    -- flag preserves the fact that a conversion was *claimed*.
-    case when claim_is_known then claim_id end  as claim_id,
-    claim_id is not null and not claim_is_known as has_unresolvable_claim_id,
-    claim_is_known                              as converted,
 
     partner is null as partner_was_missing,
     timestamp_raw,
@@ -75,4 +61,4 @@ select
             then 'unparseable_timestamp'
     end as dq_reject_reason
 
-from with_claim
+from parsed

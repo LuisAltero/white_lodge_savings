@@ -20,9 +20,9 @@ unit_tests:
     description: Flat cut in cents; the remainder stays with White Lodge.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c1", pbm_fee_cents: 500, dq_reject_reason: null}
+          - {claim_id: "c1", pbm_fee_cents: 500, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows:
           - {claim_id: "c1", partner: "Kafka Rx"}
@@ -39,9 +39,9 @@ unit_tests:
       to 0-1 by stg_partners, so 80% of 500 is 400 to the partner.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c2", pbm_fee_cents: 500, dq_reject_reason: null}
+          - {claim_id: "c2", pbm_fee_cents: 500, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows:
           - {claim_id: "c2", partner: "Flink Rx"}
@@ -59,9 +59,9 @@ unit_tests:
       money being created or destroyed by rounding.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c3", pbm_fee_cents: 101, dq_reject_reason: null}
+          - {claim_id: "c3", pbm_fee_cents: 101, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows:
           - {claim_id: "c3", partner: "Odd Rx"}
@@ -79,9 +79,9 @@ unit_tests:
       negative), and the flag marks the row with the 50-cent contractual gap.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c4", pbm_fee_cents: 50, dq_reject_reason: null}
+          - {claim_id: "c4", pbm_fee_cents: 50, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows:
           - {claim_id: "c4", partner: "Kafka Rx"}
@@ -100,9 +100,9 @@ unit_tests:
       vanish from the report.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c5", pbm_fee_cents: 700, dq_reject_reason: null}
+          - {claim_id: "c5", pbm_fee_cents: 700, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows: []
       - input: ref('stg_partners')
@@ -118,9 +118,9 @@ unit_tests:
       through to the wrong rule. Here the payout is 0 and the model stays 'flat'.
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c6", pbm_fee_cents: 700, dq_reject_reason: null}
+          - {claim_id: "c6", pbm_fee_cents: 700, scope_exclusion_reason: null}
       - input: ref('int_claim_attribution')
         rows:
           - {claim_id: "c6", partner: "Airflow Rx"}
@@ -132,16 +132,17 @@ unit_tests:
         - {claim_id: "c6", partner: "Airflow Rx", fee_model: "flat",
            partner_fee_cents: 0, wls_net_fee_cents: 700}
 
-  - name: fee_split_ignores_quarantined_claims
+  - name: fee_split_ignores_out_of_scope_claims
     description: >
-      A quarantined claim never enters the money calculation. If it did, an
-      unknown NPI or a negative price would show up in revenue.
+      A claim excluded for an unknown NPI never enters the money calculation. If
+      it did, revenue from a pharmacy that isn't ours would show up in the
+      totals. (Malformed claims never get this far — they stopped in staging.)
     model: int_claim_economics
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "ok",  pbm_fee_cents: 300, dq_reject_reason: null}
-          - {claim_id: "bad", pbm_fee_cents: 300, dq_reject_reason: "unknown_npi"}
+          - {claim_id: "ok",  pbm_fee_cents: 300, scope_exclusion_reason: null}
+          - {claim_id: "bad", pbm_fee_cents: 300, scope_exclusion_reason: "unknown_npi"}
       - input: ref('int_claim_attribution')
         rows: []
       - input: ref('stg_partners')
@@ -162,23 +163,23 @@ unit_tests:
       rule is pinned here with fabricated rows instead of trusted to the data.
     model: int_claim_revert
     given:
-      - input: ref('stg_reverts')
+      - input: ref('int_reverts_scoped')
         rows:
-          - {claim_id: "c1", revert_id: "r2", reverted_at: "2026-06-20 10:00:00", dq_reject_reason: null}
-          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", dq_reject_reason: null}
+          - {claim_id: "c1", revert_id: "r2", reverted_at: "2026-06-20 10:00:00", scope_exclusion_reason: null}
+          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", scope_exclusion_reason: null}
     expect:
       rows:
         - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", revert_event_count: 2}
 
-  - name: revert_ignores_quarantined_reverts
+  - name: revert_ignores_out_of_scope_reverts
     description: >
       An orphan reversal (pointing at a claim outside our universe) invalidates
       nothing. Applying it would be inventing a reversal.
     model: int_claim_revert
     given:
-      - input: ref('stg_reverts')
+      - input: ref('int_reverts_scoped')
         rows:
-          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", dq_reject_reason: "orphan_claim_id"}
+          - {claim_id: "c1", revert_id: "r1", reverted_at: "2026-06-15 08:00:00", scope_exclusion_reason: "orphan_claim_id"}
     expect:
       rows: []
 
@@ -192,9 +193,9 @@ unit_tests:
       for "latest available" and this test fails with a name that says why.
     model: int_claim_cost
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c1", ndc: "00078050161", filled_date: "2026-04-15", quantity: 30, dq_reject_reason: null}
+          - {claim_id: "c1", ndc: "00078050161", filled_date: "2026-04-15", quantity: 30, scope_exclusion_reason: null}
       - input: ref('stg_nadac')
         rows:
           - {ndc: "00078050161", effective_date: "2026-03-04", nadac_unit_cost_usd: 1.00, generic_unit_cost_usd: null, drug_class: "generic"}
@@ -204,42 +205,25 @@ unit_tests:
       rows:
         - {claim_id: "c1", unit_cost_usd: 2.00, cost_effective_date: "2026-04-01", cost_basis: "as_of_fill_date", est_acquisition_cost_cents: 6000, has_cost_match: true}
 
-  - name: cost_falls_back_to_earliest_when_the_claim_predates_nadac
+  - name: cost_is_unknown_not_zero_when_there_is_no_snapshot
     description: >
-      A claim filled before the first published price for its NDC. Rather than
-      throwing the margin away we anchor on the oldest snapshot that exists, and
-      `cost_basis` labels the row so a cost-sensitive analysis can exclude it
-      instead of discovering it afterwards. This path fires zero times on the
-      current sample — which is precisely why it can only be pinned here.
+      Two ways to have no cost, one outcome. `c2` predates every snapshot for its
+      NDC; `c3` carries an NDC NADAC never publishes (571 claims in the sample).
+      Both come out NULL, not 0 — a zero would read as "this drug is free" and
+      quietly inflate pharmacy margin. `has_cost_match = false` is what lets
+      fct_claim leave `pharmacy_margin_cents` NULL for them.
     model: int_claim_cost
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c2", ndc: "00078050161", filled_date: "2026-02-01", quantity: 10, dq_reject_reason: null}
-      - input: ref('stg_nadac')
-        rows:
-          - {ndc: "00078050161", effective_date: "2026-03-04", nadac_unit_cost_usd: 1.00, generic_unit_cost_usd: null, drug_class: "generic"}
-          - {ndc: "00078050161", effective_date: "2026-04-01", nadac_unit_cost_usd: 2.00, generic_unit_cost_usd: null, drug_class: "generic"}
-    expect:
-      rows:
-        - {claim_id: "c2", unit_cost_usd: 1.00, cost_effective_date: "2026-03-04", cost_basis: "earliest_available", est_acquisition_cost_cents: 1000, has_cost_match: true}
-
-  - name: cost_is_unknown_not_zero_when_the_ndc_is_not_in_nadac
-    description: >
-      571 claims carry an NDC that NADAC never publishes. The cost comes out
-      NULL, not 0 — a zero would read as "this drug is free" and quietly inflate
-      pharmacy margin. `has_cost_match = false` is what lets fct_claim leave
-      `pharmacy_margin_cents` NULL for these.
-    model: int_claim_cost
-    given:
-      - input: ref('stg_claims')
-        rows:
-          - {claim_id: "c3", ndc: "99999000101", filled_date: "2026-04-15", quantity: 30, dq_reject_reason: null}
+          - {claim_id: "c2", ndc: "00078050161", filled_date: "2026-02-01", quantity: 10, scope_exclusion_reason: null}
+          - {claim_id: "c3", ndc: "99999000101", filled_date: "2026-04-15", quantity: 30, scope_exclusion_reason: null}
       - input: ref('stg_nadac')
         rows:
           - {ndc: "00078050161", effective_date: "2026-03-04", nadac_unit_cost_usd: 1.00, generic_unit_cost_usd: null, drug_class: "generic"}
     expect:
       rows:
+        - {claim_id: "c2", unit_cost_usd: null, cost_effective_date: null, cost_basis: "no_match", est_acquisition_cost_cents: null, has_cost_match: false}
         - {claim_id: "c3", unit_cost_usd: null, cost_effective_date: null, cost_basis: "no_match", est_acquisition_cost_cents: null, has_cost_match: false}
 
   - name: cost_multiplies_before_rounding_to_cents
@@ -250,12 +234,82 @@ unit_tests:
       30 = 780 — a 1.3% error on every claim, in our favour, invisible.
     model: int_claim_cost
     given:
-      - input: ref('stg_claims')
+      - input: ref('int_claims_scoped')
         rows:
-          - {claim_id: "c4", ndc: "00378335016", filled_date: "2026-05-01", quantity: 30, dq_reject_reason: null}
+          - {claim_id: "c4", ndc: "00378335016", filled_date: "2026-05-01", quantity: 30, scope_exclusion_reason: null}
       - input: ref('stg_nadac')
         rows:
           - {ndc: "00378335016", effective_date: "2026-01-01", nadac_unit_cost_usd: 0.26341, generic_unit_cost_usd: null, drug_class: "generic"}
     expect:
       rows:
         - {claim_id: "c4", est_acquisition_cost_cents: 790, cost_basis: "as_of_fill_date"}
+
+  # ---------- scope: the rules that moved out of staging ----------
+
+  - name: scope_excludes_unknown_pharmacies_and_never_sees_malformed_rows
+    description: >
+      Three claims, three outcomes. `keep` is ours. `ghost` is a well-formed
+      claim from a pharmacy we don't have on file — excluded, not rejected, and
+      it comes back by itself the day that NPI is onboarded. `broken` was already
+      quarantined in staging and never reaches this model at all: that is how
+      CASE precedence survives the layer split without being restated here.
+    model: int_claims_scoped
+    given:
+      - input: ref('stg_claims')
+        rows:
+          - {claim_id: "keep",   npi: "111", dq_reject_reason: null}
+          - {claim_id: "ghost",  npi: "999", dq_reject_reason: null}
+          - {claim_id: "broken", npi: "999", dq_reject_reason: "missing_required_field"}
+      - input: ref('stg_pharmacies')
+        rows:
+          - {npi: "111", chain: "meridian"}
+    expect:
+      rows:
+        - {claim_id: "keep",  scope_exclusion_reason: null}
+        - {claim_id: "ghost", scope_exclusion_reason: "unknown_npi"}
+
+  - name: scope_orphans_a_revert_whose_claim_is_not_analysable
+    description: >
+      Two ways to be an orphan, one outcome. `r2` points at a claim that never
+      landed; `r3` points at one that landed but was excluded for an unknown NPI.
+      Both invalidate nothing, and both have to say so — applying either would be
+      inventing a reversal, ignoring either silently would hide an ingestion gap.
+    model: int_reverts_scoped
+    given:
+      - input: ref('stg_reverts')
+        rows:
+          - {revert_id: "r1", claim_id: "c1",    dq_reject_reason: null}
+          - {revert_id: "r2", claim_id: "never", dq_reject_reason: null}
+          - {revert_id: "r3", claim_id: "cx",    dq_reject_reason: null}
+      - input: ref('int_claims_scoped')
+        rows:
+          - {claim_id: "c1", scope_exclusion_reason: null}
+          - {claim_id: "cx", scope_exclusion_reason: "unknown_npi"}
+    expect:
+      rows:
+        - {revert_id: "r1", scope_exclusion_reason: null}
+        - {revert_id: "r2", scope_exclusion_reason: "orphan_claim_id"}
+        - {revert_id: "r3", scope_exclusion_reason: "orphan_claim_id"}
+
+  - name: resolution_drops_the_claim_link_never_the_lookup
+    description: >
+      The asymmetry that keeps the funnel honest. `l2` claimed a conversion into
+      a claim we can't analyse: it loses the link, keeps the row, and says so via
+      `has_unresolvable_claim_id` — so it still counts in the denominator and
+      nobody's conversion rate gets inflated by dropping it. `l3` never claimed
+      one, which is a different thing and must not look the same.
+    model: int_lookups_resolved
+    given:
+      - input: ref('stg_lookups')
+        rows:
+          - {lookup_id: "l1", claim_id: "c1",    dq_reject_reason: null}
+          - {lookup_id: "l2", claim_id: "ghost", dq_reject_reason: null}
+          - {lookup_id: "l3", claim_id: null,    dq_reject_reason: null}
+      - input: ref('int_claims_scoped')
+        rows:
+          - {claim_id: "c1", scope_exclusion_reason: null}
+    expect:
+      rows:
+        - {lookup_id: "l1", claim_id: "c1", converted: true,  has_unresolvable_claim_id: false}
+        - {lookup_id: "l2", claim_id: null, converted: false, has_unresolvable_claim_id: true}
+        - {lookup_id: "l3", claim_id: null, converted: false, has_unresolvable_claim_id: false}

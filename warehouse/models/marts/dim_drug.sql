@@ -15,9 +15,9 @@
 
 with observed_ndcs as (
 
-    select ndc from {{ ref('stg_claims') }} where dq_reject_reason is null
+    select ndc from {{ ref('int_claims_scoped') }} where scope_exclusion_reason is null
     union
-    select ndc from {{ ref('stg_lookups') }} where dq_reject_reason is null
+    select ndc from {{ ref('int_lookups_resolved') }}
 
 ),
 

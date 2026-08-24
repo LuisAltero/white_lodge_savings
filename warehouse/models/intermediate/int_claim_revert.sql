@@ -23,8 +23,8 @@
 
 with reverts as (
 
-    select * from {{ ref('stg_reverts') }}
-    where dq_reject_reason is null
+    select * from {{ ref('int_reverts_scoped') }}
+    where scope_exclusion_reason is null
 
 )
 

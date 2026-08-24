@@ -16,20 +16,19 @@
 with event_dates as (
 
     select filled_date as date_day
-    from {{ ref('stg_claims') }}
-    where dq_reject_reason is null
+    from {{ ref('int_claims_scoped') }}
+    where scope_exclusion_reason is null
 
     union all
 
     select lookup_date
-    from {{ ref('stg_lookups') }}
-    where dq_reject_reason is null
+    from {{ ref('int_lookups_resolved') }}
 
     union all
 
     select cast(reverted_at as date)
-    from {{ ref('stg_reverts') }}
-    where dq_reject_reason is null
+    from {{ ref('int_reverts_scoped') }}
+    where scope_exclusion_reason is null
 
 ),
 

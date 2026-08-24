@@ -91,10 +91,38 @@ models:
         data_tests: [unique, not_null]
 
   - name: dq_rejects
-    description: Quarantined records, with the reason and the original payload.
+    description: >
+      Quarantined records from both layers, with the reason, its class and the
+      original payload. `defect_class` is the column that turns a count into an
+      action — see the model header.
     columns:
       - name: reject_reason
-        data_tests: [not_null]
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - missing_required_field
+                  - unparseable_number
+                  - unparseable_timestamp
+                  - non_positive_amount
+                  - duplicate_claim_id
+                  - duplicate_revert_id
+                  - unknown_npi
+                  - orphan_claim_id
+      - name: defect_class
+        description: malformed (producer fixes it) / ambiguous (a human decides) / out_of_scope (returns on its own).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["malformed", "ambiguous", "out_of_scope"]
+      - name: detected_in
+        description: Which layer stopped the row — where to go to change the rule.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["staging", "intermediate"]
 
   - name: mart_partner_performance
     description: "Grain: one partner. Volume, retained revenue and funnel."

@@ -12,7 +12,7 @@ help:
 	@echo "make all       - full pipeline + executed notebook"
 	@echo "make pipeline  - ingestion + dbt build (models and tests)"
 	@echo "make test      - pytest + dbt unit tests"
-	@echo "make notebook  - rebuild and execute analysis/analysis.ipynb"
+	@echo "make notebook  - execute analysis/analysis.ipynb"
 	@echo "make query     - open the DuckDB shell on the warehouse"
 	@echo "make rebuild   - drop the database and rebuild from scratch"
 	@echo "make clean     - remove build artefacts (keeps the NADAC cache)"
@@ -36,10 +36,10 @@ test:
 dbt-test:
 	cd warehouse && ../$(PYTHON) -m dbt.cli.main test
 
-# The delivered .ipynb ships with executed outputs so it reads in a browser.
-# The cell sources live in analysis/build_notebook.py.
+# Re-executes the notebook in place, so the delivered .ipynb ships with its
+# outputs and reads in a browser. Edit the cells in Jupyter — the notebook is
+# the source, there is no generator behind it.
 notebook:
-	$(PYTHON) analysis/build_notebook.py
 	$(PYTHON) -m jupyter nbconvert --to notebook --execute --inplace \
 		--ExecutePreprocessor.timeout=300 analysis/analysis.ipynb
 

@@ -1,6 +1,60 @@
 version: 2
 
 models:
+  # ---------- scope: the rules that need a second table ----------
+  #
+  # These three exist so the staging layer can stay source-local. Everything a
+  # row can be judged on alone is decided in staging; everything that needs
+  # another model is decided here, under a column named for what it means —
+  # `scope_exclusion_reason`, not `dq_reject_reason`. See int_claims_scoped.
+
+  - name: int_claims_scoped
+    description: >
+      The analysable claim universe: claims that passed staging, with the
+      unknown-NPI scope rule applied. scope_exclusion_reason NULL means usable.
+    columns:
+      - name: claim_id
+        data_tests: [unique, not_null]
+      - name: scope_exclusion_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["unknown_npi"]
+              config:
+                where: "scope_exclusion_reason is not null"
+
+  - name: int_reverts_scoped
+    description: >
+      Reversals that passed staging, resolved against the analysable claim
+      universe. A revert pointing at a claim we don't have is out of scope.
+    columns:
+      - name: revert_id
+        data_tests: [unique, not_null]
+      - name: claim_id
+        data_tests: [not_null]
+      - name: scope_exclusion_reason
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["orphan_claim_id"]
+              config:
+                where: "scope_exclusion_reason is not null"
+
+  - name: int_lookups_resolved
+    description: >
+      Lookups that passed staging, with conversion resolved against the
+      analysable claim universe. Nothing is excluded here — an unresolvable
+      claim_id loses the link, not the row.
+    columns:
+      - name: lookup_id
+        data_tests: [unique, not_null]
+      - name: converted
+        data_tests: [not_null]
+      - name: has_unresolvable_claim_id
+        data_tests: [not_null]
+
+  # ---------- the business rules ----------
+
   - name: int_claim_cost
     description: Valid claims with the NADAC cost as-of the fill date.
     columns:
@@ -10,7 +64,7 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: ["as_of_fill_date", "earliest_available", "no_match"]
+                values: ["as_of_fill_date", "no_match"]
 
   - name: int_claim_attribution
     description: Each claim's partner and channel, derived from the converting lookup.

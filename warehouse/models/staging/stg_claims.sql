@@ -1,18 +1,28 @@
 -- One claim event per row, typed, with its rejection reason attached.
 --
+-- **Source-local only.** This model reads `raw.claims` and nothing else — no
+-- `ref()` to another staging model. Every rule below is decidable by looking at
+-- the row itself, or at the batch it arrived in. The rule that needs the
+-- pharmacy reference data ("is this NPI one of ours?") is a *relational*
+-- question, and it lives one layer up in `int_claims_scoped`.
+--
+-- That split is not bookkeeping. A row rejected here is **malformed** — the data
+-- producer has to fix it, and it never comes back on its own. A row excluded up
+-- there is **out of scope** — it is a perfectly good claim whose pharmacy we
+-- don't have on file, and it returns by itself the day that pharmacy is
+-- onboarded. Same 460 rows, completely different follow-up.
+--
 -- Malformed-record policy: **quarantine, don't drop**. No row disappears here.
 -- Every one comes out with a `dq_reject_reason` — NULL when it's clean.
 -- Downstream models filter on NULL; `dq_rejects` collects the rest with the
 -- reason and the original text that arrived.
 --
--- That costs one column and buys the ability to answer "how much data are we
--- losing, for which reason, from which file" — which is the question that always
--- comes up when a number looks lower than expected.
---
 -- The CASE ordering *is* the policy, and it is deliberate: most structural
--- defect first, most semantic last. A row with a missing field *and* an unknown
--- NPI is reported as `missing_required_field`, because that's the problem the
--- data producer has to fix first.
+-- defect first, most semantic last. A row with a missing field *and* an
+-- unreadable number is reported as `missing_required_field`, because that's the
+-- problem the data producer has to fix first. Precedence survives the layer
+-- split for free: `int_claims_scoped` only ever sees rows that passed here, so a
+-- row that is both malformed and out of scope is still reported as malformed.
 
 with source as (
 
@@ -51,16 +61,6 @@ with_duplicates as (
         *,
         count(*) over (partition by claim_id) as id_occurrences
     from parsed
-
-),
-
-with_pharmacy as (
-
-    select
-        c.*,
-        p.npi is not null as npi_is_known
-    from with_duplicates as c
-    left join {{ ref('stg_pharmacies') }} as p using (npi)
 
 )
 
@@ -114,14 +114,11 @@ select
         --    different claims competing for one id. There is no way to pick a
         --    winner without inventing a criterion, and picking wrong corrupts
         --    revenue silently. Quarantine both sides.
+        --
+        --    This one needs the whole batch rather than the single row, but it
+        --    still needs no other model, so it belongs here.
         when id_occurrences > 1
             then 'duplicate_claim_id'
-
-        -- 6. Pharmacy not in the reference data (460 here; 472 in the file, the
-        --    other 12 already caught by earlier rules). The brief is explicit:
-        --    we only care about events for pharmacies in the dataset.
-        when not npi_is_known
-            then 'unknown_npi'
     end as dq_reject_reason
 
-from with_pharmacy
+from with_duplicates

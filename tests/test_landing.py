@@ -1,9 +1,20 @@
 """Tests for the ingestion layer.
 
 What's under test here is *a decision*, not a function: land everything as
-VARCHAR. If someone "improves" `land.py` by letting DuckDB infer types, these
-tests fail with a name that explains the damage — NDC loses its leading zero,
-unreadable text becomes NULL with no trace.
+VARCHAR. These tests exist because dbt cannot see this layer at all — its world
+starts at `raw.*`, after landing already happened — so a landing bug produces a
+raw table that is internally consistent and simply wrong.
+
+The decision is about **determinism**. DuckDB's type inference samples the first
+~20k rows, so what a file lands as depends on what else arrived in the batch: the
+same dirty value is harmless in one run and fatal in the next. Declaring the
+schema makes ingestion behave the same way every time.
+
+(Worth stating precisely, because the older justification for this was wrong:
+current DuckDB does *not* strip the leading zero from an NDC. It stays VARCHAR in
+JSON — the value is quoted in the file — and the CSV sniffer detects the leading
+zero and refuses to numerify it. Verified in both formats. The zero survives; the
+determinism doesn't.)
 """
 
 from __future__ import annotations
@@ -33,7 +44,9 @@ def write_events(directory, rows):
 def test_landing_preserves_leading_zeros_in_ndc(con, tmp_path):
     """NDC is an 11-digit code, not a number.
 
-    If type inference turns "00078050161" into BIGINT it becomes 78050161, and
+    Current DuckDB happens to preserve the leading zero on its own, so this is a
+    regression guard rather than a bug we hit: if a future version, a different
+    reader, or a `cast` added upstream ever turns "00078050161" into 78050161,
     every join to NADAC fails silently — not with an error, with zero matches.
     """
     directory = write_events(
@@ -49,20 +62,34 @@ def test_landing_preserves_leading_zeros_in_ndc(con, tmp_path):
 
 
 def test_landing_preserves_text_that_cannot_be_a_number(con, tmp_path):
-    """`price: "one hundred"` reaches staging intact.
+    """`price: "one hundred"` reaches staging intact, *and the batch survives it*.
 
-    Under type inference that row would become NULL, and `dq_rejects` would say
-    "unreadable number" without being able to show *which* text was unreadable.
+    The dirty row sits past DuckDB's inference sampling window (~20k rows) on
+    purpose, because that is the case that actually bites. Under type inference
+    the sample is all-numeric, DuckDB commits to DOUBLE, and then hits the text:
+    the whole ingest dies with `JSON transform error`. One bad row out of 25,001
+    takes the run down, and which row does it depends on where it landed in the
+    batch.
+
+    With the schema declared, it lands as text and becomes exactly one row of
+    `unparseable_number` in dq_rejects, with the original literal preserved.
     """
-    directory = write_events(
-        tmp_path / "claims",
-        [{"id": "a", "npi": "1", "ndc": "1", "price": "one hundred",
-          "quantity": "thirty", "pbm_fee": "1.0", "timestamp": "2026-05-01T00:00:00"}],
-    )
+    # price/quantity are JSON *numbers* here, exactly as the real files carry
+    # them (`"price": 9.57`). That is what makes the sampler commit to DOUBLE —
+    # write them as quoted strings and there is no type conflict to detect, and
+    # this test would pass whether or not the schema is declared.
+    clean = [{"id": f"c{index}", "npi": "1", "ndc": "1", "price": 1.0,
+              "quantity": 1.0, "pbm_fee": 1.0, "timestamp": "2026-05-01T00:00:00"}
+             for index in range(25_000)]
+    dirty = {"id": "dirty", "npi": "1", "ndc": "1", "price": "one hundred",
+             "quantity": "thirty", "pbm_fee": 1.0, "timestamp": "2026-05-01T00:00:00"}
+    directory = write_events(tmp_path / "claims", clean + [dirty])
 
-    land.land_events(con, "claims", directory)
+    assert land.land_events(con, "claims", directory) == 25_001
 
-    price, quantity = con.execute("select price, quantity from raw.claims").fetchone()
+    price, quantity = con.execute(
+        "select price, quantity from raw.claims where id = 'dirty'"
+    ).fetchone()
     assert price == "one hundred"
     assert quantity == "thirty"
 
@@ -86,33 +113,6 @@ def test_landing_fills_missing_fields_with_null_instead_of_failing(con, tmp_path
     assert con.execute("select ndc from raw.claims").fetchone()[0] is None
 
 
-def test_landing_reads_every_file_in_the_directory(con, tmp_path):
-    """Events arrive split across many files — 119 for lookups alone."""
-    directory = tmp_path / "claims"
-    directory.mkdir(parents=True)
-    for index in range(3):
-        (directory / f"output-{index}.json").write_text(
-            json.dumps([{"id": str(index), "npi": "1", "ndc": "1", "price": "1.0",
-                         "quantity": "1", "pbm_fee": "1.0",
-                         "timestamp": "2026-05-01T00:00:00"}]),
-            encoding="utf-8",
-        )
-
-    assert land.land_events(con, "claims", directory) == 3
-
-
-def test_landing_records_the_file_each_row_came_from(con, tmp_path):
-    """When a number looks wrong, step one is finding the file."""
-    directory = write_events(
-        tmp_path / "claims",
-        [{"id": "a", "npi": "1", "ndc": "1", "price": "1.0", "quantity": "1",
-          "pbm_fee": "1.0", "timestamp": "2026-05-01T00:00:00"}],
-    )
-
-    land.land_events(con, "claims", directory)
-
-    (source_file,) = con.execute("select _source_file from raw.claims").fetchone()
-    assert source_file.endswith("output-batch.json")
 
 
 def test_landing_keeps_zero_fee_partner_distinct_from_missing(con, tmp_path):

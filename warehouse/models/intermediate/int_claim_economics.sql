@@ -40,8 +40,8 @@
 with claims as (
 
     select claim_id, pbm_fee_cents
-    from {{ ref('stg_claims') }}
-    where dq_reject_reason is null
+    from {{ ref('int_claims_scoped') }}
+    where scope_exclusion_reason is null
 
 ),
 

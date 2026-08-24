@@ -11,8 +11,7 @@
 
 with lookups as (
 
-    select * from {{ ref('stg_lookups') }}
-    where dq_reject_reason is null
+    select * from {{ ref('int_lookups_resolved') }}
 
 ),
 

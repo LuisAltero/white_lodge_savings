@@ -1,9 +1,9 @@
--- Reversals. Same quarantine contract as stg_claims.
+-- Reversals, typed. Same quarantine contract as stg_claims, and the same
+-- source-local rule: no `ref()` to another model.
 --
--- `orphan_claim_id` (53 rows) is the interesting rejection: the reversal arrived
--- but the claim it invalidates isn't in our universe — either it never landed,
--- or it was itself rejected (unknown NPI, duplicate id). Applying that reversal
--- would be a no-op; ignoring it silently would hide an ingestion gap.
+-- The reversal whose claim isn't in our universe (`orphan_claim_id`, 53 rows)
+-- used to be classified here, which meant this model had to read `stg_claims`.
+-- It's a relational question, so it moved to `int_reverts_scoped`.
 
 with source as (
 
@@ -28,18 +28,6 @@ with_duplicates as (
     select *, count(*) over (partition by revert_id) as id_occurrences
     from parsed
 
-),
-
-with_claim as (
-
-    select
-        r.*,
-        c.claim_id is not null as claim_is_known
-    from with_duplicates as r
-    left join (
-        select claim_id from {{ ref('stg_claims') }} where dq_reject_reason is null
-    ) as c using (claim_id)
-
 )
 
 select
@@ -57,8 +45,6 @@ select
             then 'unparseable_timestamp'
         when id_occurrences > 1
             then 'duplicate_revert_id'
-        when not claim_is_known
-            then 'orphan_claim_id'
     end as dq_reject_reason
 
-from with_claim
+from with_duplicates
