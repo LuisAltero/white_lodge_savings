@@ -306,6 +306,11 @@ the year halves or doubles that drug's margin. The choice barely moves the
 portfolio and materially moves per-drug analysis, which is where margin questions
 get asked.
 
+The stability half of that argument stopped being a claim and became a
+measurement: the NADAC file moved on under this warehouse — a week newer, 30k
+more rows — and every number in this README came out unchanged. Under "latest
+snapshot" it would have restated the whole history. See *Pin the NADAC file*.
+
 A claim with no snapshot on or before the fill date gets **no cost at all**:
 `cost_basis = 'no_match'`, every cost column NULL. 46 of 49 NDCs match; the three
 that don't are deliberate in the sample and cover 571 claims, which stay in the
@@ -472,8 +477,8 @@ partial retry, no SLA. `dbt build` already resolves the DAG.
 
 ## Tests
 
-`make pipeline` builds 23 models and runs **99 dbt tests** alongside them;
-`make test` adds 7 pytest tests. They're concentrated where the brief says it
+`make pipeline` builds 23 models and runs **100 dbt tests** alongside them;
+`make test` adds 8 pytest tests. They're concentrated where the brief says it
 matters — the fee split, reversal handling, malformed records, and the NADAC
 snapshot choice — not spread for coverage.
 
@@ -482,14 +487,20 @@ snapshot choice — not spread for coverage.
   deduplication, every data-quality classification including precedence, and the
   as-of cost resolution (which snapshot wins, what happens when none does, and
   that the unit rate is multiplied before it's rounded).
-- **4 singular tests** assert invariants: the split reconciles to the cent, the
+- **5 singular tests** assert invariants: the split reconciles to the cent, the
   partner never takes more than we collected, reversed claims carry zero in every
-  `net_*` column, and **no claim is lost silently** (`raw = fct_claim + dq_rejects`).
+  `net_*` column, **no claim is lost silently** (`raw = fct_claim + dq_rejects`),
+  and the rejection rate stays under 20% per source. That last one exists because
+  conservation alone is satisfied by *total* quarantine: rename a JSON field
+  upstream and `read_json` lands it as NULL, every row is rejected for the same
+  reason, GMV comes out $0 and the build still passes. Verified by renaming
+  `price` to `amount` across all 29 claim files — before the test, 122 green and
+  exit 0; after it, a failure naming both affected sources at 100%.
 - **76 schema tests** cover uniqueness and not-null on every key, referential
   integrity from both facts into all four dimensions, and accepted values on
   every enumerated column — including rejection reasons, so adding one without
   documenting it fails the build.
-- **7 pytest** cover the one layer dbt structurally cannot see. dbt's world
+- **8 pytest** cover the one layer dbt structurally cannot see. dbt's world
   starts at `raw.*`, *after* landing happened, so a landing bug produces a raw
   table that is internally consistent and simply wrong. They pin the decision to
   declare every column VARCHAR — a dirty value past DuckDB's ~20k-row inference
@@ -640,10 +651,24 @@ commercial terms are where the damage is.
 usual claims passes every test today. `dbt source freshness` plus a row-count
 anomaly test on the daily fact would catch it.
 
-**Pin the NADAC file.** The cache stores whatever was current when downloaded, so
-two people who downloaded in different weeks get slightly different costs. The run
-should record the `as_of_date` it used, and ideally pin it. A real reproducibility
-gap; the honest reason it isn't fixed is that it doesn't bite at this scale.
+**Pin the NADAC file.** The cache stores whatever was current when it was
+downloaded, so in principle two people who download in different weeks build
+against different reference data. The run should record the `as_of_date` it used,
+and ideally pin it.
+
+I measured how much that actually costs. Rebuilding against a NADAC file one week
+newer — `08-19-2026` to `08-26-2026`, 998,332 to 1,028,250 raw rows — changed
+**nothing**: all 79 figures in this README and in the submission email came out
+identical. Two mechanisms absorb it. The `qualify` in `stg_nadac` collapses CMS's
+weekly republications, so those 29,918 new raw rows are only **77** genuinely new
+prices; and all 77 take effect after `2026-07-31`, the last fill in the data, so
+the as-of join never reaches them. Under "latest snapshot for everything" the same
+download would have restated the cost of the entire history.
+
+So the gap is real but bounded: it bites the day CMS revises a price at an
+`effective_date` already in the past, or the day the event window catches up to
+the present. Neither is true at this scale, which is the honest reason it isn't
+fixed.
 
 **Partner economics as a scenario model.** Everything here is descriptive. What
 Dale actually wants is "what happens if I move Flink Rx from 80% to 50%" — a small
