@@ -3,7 +3,17 @@
 # On Windows: `winget install ezwinports.make`. Without make, every target is a
 # single command — copy the line.
 
-PYTHON ?= .venv/Scripts/python.exe
+# The venv puts the interpreter in a different place per platform, and macOS
+# ships no bare `python` - only `python3`. Both are `?=`, so either can still be
+# overridden on the command line.
+ifeq ($(OS),Windows_NT)
+PYTHON    ?= .venv/Scripts/python.exe
+BOOTSTRAP ?= python
+else
+PYTHON    ?= .venv/bin/python
+BOOTSTRAP ?= python3
+endif
+
 DB     ?= data/duckdb/warehouse.duckdb
 
 # dbt has to run against warehouse/, but `cd warehouse && ...` puts a `&&` in the
@@ -38,7 +48,7 @@ help:
 	@echo "make clean     - remove build artefacts (keeps the NADAC cache)"
 
 setup:
-	python -m venv .venv
+	$(BOOTSTRAP) -m venv .venv
 	$(PYTHON) -m pip install --upgrade pip
 	$(PYTHON) -m pip install -r requirements.txt
 
