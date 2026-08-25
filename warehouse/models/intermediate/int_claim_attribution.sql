@@ -1,25 +1,20 @@
 -- Link each claim to the partner and channel that originated it.
 --
--- ## The finding that shapes this model
+-- **The claim event has no `partner`.** It has npi, ndc, price, quantity, pbm_fee
+-- and timestamp. Commercial attribution exists only through the lookup that
+-- converted — which is why the funnel isn't a side report but the critical path
+-- of revenue, and where every fee split and partner analysis comes from.
 --
--- **The claim event has no `partner`.** It has npi, ndc, price, quantity,
--- pbm_fee and timestamp. Commercial attribution exists only through the lookup
--- that converted — and that's where every fee split and every partner analysis
--- Dale asked for comes from. Which is why the funnel isn't a side report: it is
--- the critical path of revenue.
+-- Verified: no claim has two lookups pointing at it, so the relationship is 1:1
+-- and `partner` / `channel` denormalise onto `fct_claim` with no risk of row
+-- multiplication. The `qualify` is the seatbelt — if two ever arrive the earliest
+-- wins (it originated the search) and `attributing_lookup_count` keeps the
+-- discrepancy visible.
 --
--- Verified on the sample: no claim has two lookups pointing at it, so the
--- relationship is 1:1 and `partner` / `channel` can be denormalised straight
--- onto fct_claim with no risk of row multiplication. The `qualify` below is the
--- seatbelt — if two ever arrive, the fact doesn't inflate; the earliest lookup
--- wins (it's the one that originated the search) and the discrepancy stays
--- visible in `attributing_lookup_count`.
---
--- 823 analysable claims have no lookup at all (1,539 before quarantine). They
--- aren't errors: they're fills that arrived without passing through our
--- price-lookup funnel. They become `direct` — a value of its own, not a NULL —
--- so they show up in `group by partner` instead of silently vanishing from every
--- commercial analysis.
+-- 823 analysable claims have no lookup at all (1,544 before quarantine). They
+-- aren't errors — they're fills that never passed through our price-lookup
+-- funnel. They become `direct`, a value of its own rather than a NULL, so they
+-- appear in `group by partner` instead of vanishing from every commercial cut.
 
 with converted_lookups as (
 

@@ -1,28 +1,22 @@
--- Lookups that survived staging, with their conversion resolved against the
--- analysable claim universe.
+-- Lookups that survived staging, with conversion resolved against the analysable
+-- claim universe.
 --
--- ## Why resolution is not exclusion
---
--- A lookup is never excluded for pointing at a claim we can't analyse. It is a
--- real event that really happened at the top of the funnel, and dropping it
--- would shrink the denominator and inflate everybody's conversion rate. What
--- gets removed is the *claim link*, not the row.
+-- **Resolution, never exclusion.** A lookup is never dropped for pointing at a
+-- claim we can't analyse: it is a real event at the top of the funnel, and
+-- removing it would shrink the denominator and inflate everybody's conversion
+-- rate. What gets removed is the *claim link*, not the row.
 --
 -- 1,480 lookups carry a claim_id that resolves to nothing — the claim never
--- landed, or was rejected as malformed, or excluded as out of scope. Without
--- this model, `count(claim_id)` in the funnel and `count(*)` in `fct_claim`
--- would disagree and nobody would know which one to trust.
+-- landed, or was rejected, or is out of scope. `has_unresolvable_claim_id`
+-- preserves the fact that a conversion was *claimed*, so the gap stays measurable
+-- instead of becoming a NULL that reads as "never converted". Without this,
+-- `count(claim_id)` here and `count(*)` in `fct_claim` would disagree and nobody
+-- would know which to trust.
 --
--- `has_unresolvable_claim_id` preserves the fact that a conversion was
--- *claimed*, so the discrepancy stays measurable instead of becoming a NULL that
--- looks like "never converted".
---
--- ## Why it isn't in stg_lookups any more
---
--- It needed `ref('stg_claims')`, which made the staging layer a chain and tied
--- the funnel's denominator to the data-quality policy: change what gets
--- quarantined, and every partner's conversion rate moves, invisibly. One layer
--- up, the dependency is explicit in the DAG.
+-- It used to live in `stg_lookups`, which needed `ref('stg_claims')` — that tied
+-- the funnel's denominator to the data-quality policy, so changing what gets
+-- quarantined moved every partner's conversion rate invisibly. One layer up, the
+-- dependency is visible in the DAG.
 
 with lookups as (
 

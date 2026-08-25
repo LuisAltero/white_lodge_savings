@@ -4,9 +4,9 @@
 -- is lost to reversals, and how much acquisition cost would come out if the fill
 -- used the equivalent generic NADAC publishes.
 --
--- `revenue_at_risk_from_reversals_cents` is the number that tends to surprise:
--- it's revenue we had already earned and handed back, and it is *recoverable* —
--- unlike margin that never existed.
+-- `revenue_at_risk_from_reversals_cents` is the one that tends to surprise: it's
+-- revenue already earned and handed back, and unlike margin that never existed,
+-- it is recoverable.
 
 with claims as (
 

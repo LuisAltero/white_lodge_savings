@@ -1,16 +1,15 @@
 -- Calendar covering the event period.
 --
--- Cheap to build, and it solves the problem that only shows up once it's too
--- late: a day with no claims simply doesn't exist in `group by filled_date`, and
--- the time series gets an invisible hole that reads as a gentle decline. Start
--- from the calendar and left join the fact, and the zero shows up as a zero.
+-- Cheap to build, and it solves a problem that only shows up too late: a day with
+-- no claims doesn't exist in `group by filled_date`, so the series gets an
+-- invisible hole that reads as a gentle decline. Start from the calendar, left
+-- join the fact, and the zero shows up as a zero.
 --
--- The spine spans *every* event date, not just fill dates. It used to be
--- min/max(filled_at) alone, and `mart_funnel_daily` inner joins this model — so
--- a lookup on a day with no claims, or a reversal landing after the last fill,
+-- The spine spans *every* event date, not just fills. It used to be
+-- min/max(filled_at) alone — and since `mart_funnel_daily` inner joins this
+-- model, a lookup on a day with no claims, or a reversal after the last fill,
 -- would have dropped out of the funnel silently. That is the exact failure this
--- table exists to prevent, so the bounds have to come from the union of the
--- three event streams. In the sample all three happen to span 2026-03-01 to
+-- table exists to prevent. Here all three streams happen to span 2026-03-01 to
 -- 2026-07-31; the union is what stops that coincidence from being load-bearing.
 
 with event_dates as (

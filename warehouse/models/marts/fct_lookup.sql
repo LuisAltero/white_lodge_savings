@@ -1,13 +1,12 @@
 -- **Grain: one price-lookup event.** The top of the funnel.
 --
--- A separate fact from fct_claim because the grain is different and most of
--- these rows never become a claim — 177k lookups for 42k claims. Squeezing both
--- into one table would mean either losing the 135k non-converted rows, or a fact
--- with half its columns NULL and no declarable grain.
+-- Separate from `fct_claim` because the grain differs and most of these rows
+-- never become a claim — 177k lookups for 41k claims. One combined table would
+-- mean either losing the 136k non-converted rows, or a fact with half its columns
+-- NULL and no declarable grain.
 --
--- The bridge between the two is `claim_id`, and it's 1:1 where it exists. Funnel
--- = count from this table, revenue = sum from the other, and `converted` is the
--- only link.
+-- `claim_id` is the bridge, and it's 1:1 where it exists: funnel counts come from
+-- here, revenue sums from there, and `converted` is the only link.
 
 with lookups as (
 

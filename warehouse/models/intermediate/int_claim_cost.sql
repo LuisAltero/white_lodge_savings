@@ -3,38 +3,28 @@
 -- ## The decision: as-of the fill date
 --
 -- NADAC is a series of weekly snapshots — the same NDC carries up to 9 different
--- prices across 2026 (8.1 on average). "The cost of this drug" is not a number.
--- We chose: **the last price in force on the date the claim was filled**.
+-- prices across 2026. "The cost of this drug" is not a number, so we take **the
+-- last price in force on the date the claim was filled**: the cost the market was
+-- charging that day, and *stable*, since reprocessing this history later returns
+-- the same numbers. Not academic — NDC 45802013430 ranges $0.86 to $1.72 within
+-- 2026, so one number for the year halves or doubles that drug's margin.
 --
--- Note which date. `effective_date` is when a price took effect; `as_of_date` is
--- when CMS last republished it, 21 to 28 days later. The question here is
--- economic ("what did this drug cost that day"), so it joins on the business
--- date. Joining on the publication date would price every claim three weeks
--- stale: $7.7M of acquisition cost, 3.8%, against a $12.9M margin. `as_of_date`
--- would be the right key only for an audit — "what did we know at the time".
+-- **Note which date.** `effective_date` is when a price took effect; `as_of_date`
+-- is when CMS last republished it, 21 to 28 days later. Joining on the
+-- publication date would price every claim three weeks stale — $7.7M, 3.8%,
+-- against a $12.9M margin. It's the right key only for an audit ("what did we
+-- know at the time"), and the question here is economic.
 --
--- Why: it's the cost the market was actually charging on the day of the
--- transaction, so March margin is computed with March cost. And it's *stable* —
--- reprocessing history six months from now returns exactly the same numbers,
--- which is not true if you use "the latest snapshot".
+-- **What it costs.** A claim whose NDC has no snapshot on or before the fill date
+-- gets no cost at all: `cost_basis = 'no_match'`, every cost column NULL. 571
+-- claims, all on NDCs absent from NADAC entirely. NULL and not zero — zero reads
+-- as "this drug is free" and inflates margin, while NULL is skipped by `avg()`
+-- and `sum()`.
 --
--- This isn't an academic choice: in this data the unit cost of NDC 45802013430
--- varies 2x within 2026 ($0.86 to $1.72). Using the latest snapshot for
--- everything would halve that drug's margin.
---
--- What it costs: a claim whose NDC has no snapshot on or before the fill date
--- gets **no cost at all** — `cost_basis = 'no_match'`, and every cost column
--- NULL. 571 claims in the sample, all of them NDCs absent from NADAC entirely.
--- NULL and not zero: a zero would read as "this drug is free" and quietly
--- inflate pharmacy margin, whereas NULL is skipped by `avg()` and `sum()`.
---
--- ## Why ASOF JOIN and not a window function
---
--- DuckDB has a first-class operator for exactly this. The classic alternative —
--- cross every claim against all snapshots for its NDC, rank by `effective_date
--- desc`, keep the first — materialises the intermediate product before
--- filtering. ASOF JOIN resolves it as an ordered search, without blowing up
--- cardinality, and it says what it's doing in its own name.
+-- **Why ASOF and not a window function.** The classic alternative crosses every
+-- claim against all snapshots for its NDC and ranks them, materialising the whole
+-- product before filtering. ASOF resolves it as an ordered search without
+-- inflating cardinality, and says what it's doing in its own name.
 
 with claims as (
 

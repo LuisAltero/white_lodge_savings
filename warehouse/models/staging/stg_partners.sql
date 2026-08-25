@@ -1,15 +1,11 @@
--- Commercial terms per partner.
+-- Commercial terms per partner. Two normalisations that matter:
 --
--- Two normalisations that matter:
---
--- 1. `fee_percentage` arrives on a 0-100 scale (Hudi 50.0, Flink 80.0). We
---    convert it to a 0-1 rate here, once, so no downstream model has to
---    remember to divide by 100.
--- 2. `fee_cents = 0` is a legitimate value (Airflow Rx is a zero-commission
---    partner), not "missing". That's why we test `is not null` rather than
---    truthiness — a naive `coalesce(fee_cents, ...)` would treat the zero as
---    the same case as a percentage partner, and the model would pick the wrong
---    fee rule.
+-- 1. `fee_percentage` arrives on a 0-100 scale (Hudi 50.0, Flink 80.0) and
+--    becomes a 0-1 rate here, once, so no downstream model has to remember to
+--    divide by 100.
+-- 2. `fee_cents = 0` is a real value — Airflow Rx is a zero-commission partner —
+--    not "missing". Hence `is not null` rather than truthiness: a naive check
+--    would treat that zero as a percentage partner and pick the wrong fee rule.
 
 with source as (
 

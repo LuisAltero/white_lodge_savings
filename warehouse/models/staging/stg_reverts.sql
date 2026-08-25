@@ -1,9 +1,8 @@
--- Reversals, typed. Same quarantine contract as stg_claims, and the same
--- source-local rule: no `ref()` to another model.
+-- Reversals, typed. Same quarantine contract and same source-local rule as
+-- `stg_claims`: no `ref()` to another model.
 --
--- The reversal whose claim isn't in our universe (`orphan_claim_id`, 53 rows)
--- used to be classified here, which meant this model had to read `stg_claims`.
--- It's a relational question, so it moved to `int_reverts_scoped`.
+-- Whether the claim a reversal invalidates actually exists is a relational
+-- question, so it lives in `int_reverts_scoped` as `orphan_claim_id` (53 rows).
 
 with source as (
 

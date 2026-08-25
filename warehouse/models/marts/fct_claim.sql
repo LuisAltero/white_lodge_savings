@@ -1,49 +1,43 @@
 -- **The central table of the warehouse. Grain: one valid claim.**
 --
--- ## Why a wide fact and not a strict star
+-- ## A wide fact, not a strict star
 --
--- The attributes almost every question uses — `chain`, `partner`, `channel`,
--- `drug_class` — are denormalised here alongside the foreign keys. The
--- dimensions still exist (`dim_pharmacy`, `dim_partner`, `dim_drug`) and hold
--- the long-tail attributes.
+-- `chain`, `partner`, `channel` and `drug_class` are denormalised here alongside
+-- the foreign keys; the dimensions still exist and hold the long tail.
 --
 -- The reason is the usage context: questions arrive live, on a shared screen.
 -- "Revenue by chain last month" has to be one `select ... group by` against one
--- table. In a strict star it's three joins written under time pressure, and the
--- expensive mistake isn't typing slowly — it's getting the join wrong and
--- presenting a plausible, false number.
---
--- What the denormalisation costs: `chain` lives in two places and could drift if
--- reference data changed between runs. With a full reload each run, both sides
--- are rebuilt from the same source in the same run, so they don't drift.
+-- table. In a strict star it's three joins under time pressure, and the expensive
+-- mistake isn't typing slowly — it's getting a join wrong and presenting a
+-- plausible, false number. The cost is that `chain` lives in two places; with a
+-- full reload each run both sides rebuild from the same source, so they can't
+-- drift.
 --
 -- ## The safe default
 --
--- A reversed claim is as if it never happened. Rather than trusting everyone to
--- remember `where not is_reverted`, the `net_*_cents` columns are already zeroed
--- on reversed rows. Summing `net_wls_revenue_cents` with no filter at all gives
--- the right number; `gross_*` stays available for measuring what was reversed.
+-- A reversed claim is as if it never happened, so the `net_*_cents` columns are
+-- already zeroed on reversed rows — summing with no filter gives the right
+-- number, rather than trusting everyone to remember `where not is_reverted`. The
+-- unprefixed columns (`price_cents`, `pbm_fee_cents`, `wls_net_fee_cents`) are
+-- the gross values, for measuring what was reversed.
 --
 -- ## Two dates: this is an accumulating snapshot
 --
--- The Kimball name for this shape is an **accumulating snapshot fact**: one row
--- per claim, tracking a lifecycle that has more than one milestone — the fill
+-- One row per claim, tracking a lifecycle with two milestones — the fill
 -- (`filled_at`) and, if it comes, the reversal (`reverted_at`). The row is
--- rewritten when the later milestone lands, which is why a revert is a column
--- here and not its own fact table.
+-- rewritten when the later one lands, which is exactly why a revert is a column
+-- here rather than its own fact.
 --
--- The consequence has to be said out loud, because it isn't free: **`net_*` is
--- measured at `filled_date`, so history restates.** 712 of the 2,739 reversals
--- in this sample (26%) land in a different month than the fill they cancel — a
--- claim filled in March and reverted in July removes revenue *from March*, on
--- the next run. March's number is therefore "March as we understand it today",
--- not "March as we reported it in April".
+-- The consequence isn't free: **`net_*` is measured at `filled_date`, so history
+-- restates.** 712 of the 2,739 reversals (26%) land in a different month than the
+-- fill they cancel, so a claim filled in March and reverted in July removes
+-- revenue *from March* on the next run. March is "March as we understand it
+-- today", not "March as we reported it in April".
 --
--- That is the right default for the questions in play (true economics of a
--- cohort of fills), and it's the reason `mart_funnel_daily` keeps the two dates
--- apart under two different names. What it costs is period comparability: if
--- anyone ever needs "revenue as reported at month close", that's a snapshot of
--- this table taken at a date, and it does not exist here. See the README.
+-- That's right for the question in play (true economics of a cohort of fills),
+-- and it's why `mart_funnel_daily` keeps the two dates under different names.
+-- What it costs is period comparability: "revenue as reported at month close"
+-- would need a dated snapshot of this table, which does not exist here.
 
 with claims as (
 

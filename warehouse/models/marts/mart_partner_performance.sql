@@ -1,14 +1,12 @@
 -- **Grain: one partner.** The commercial summary behind Dale's question.
 --
--- A small aggregate like this doesn't exist for performance — the fact has 41k
--- rows and DuckDB scans that in milliseconds. It exists because it *pins the
--- definition*: "a partner's value" is `net_wls_revenue_cents`, White Lodge's
--- revenue after the payout and after reversals. Without that agreement written
--- down somewhere, two people answer "who is our best partner" with gross revenue
--- and with net revenue, and land on different partners.
---
--- This is where the difference actually shows: a partner driving heavy volume
--- while keeping 80% of the fee can be worth less than a smaller flat-cut one.
+-- A small aggregate like this doesn't exist for performance — the fact is 41k
+-- rows and DuckDB scans that in milliseconds. It exists to *pin the definition*:
+-- a partner's value is `net_wls_revenue_cents`, what White Lodge keeps after the
+-- payout and after reversals. Without that written down, two people answer "who
+-- is our best partner" with gross and with net revenue and land on different
+-- partners. The difference is real: a partner driving heavy volume while keeping
+-- 80% of the fee is worth less than a smaller flat-cut one.
 
 with claims as (
 

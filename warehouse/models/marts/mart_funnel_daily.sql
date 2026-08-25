@@ -1,30 +1,27 @@
--- **Grain: day × partner × channel.** The lookup -> claim -> reversal funnel.
+-- **Grain: day x partner x channel.** The lookup -> claim -> reversal funnel.
 --
 -- Built off the calendar (`dim_date`), not off the events: a day when Flink Rx
--- converted nothing has to show up as zero, otherwise the hole in the series
--- reads as a gentle decline on the chart and nobody notices.
---
--- This is the right grain for the time series and the channel cut. Finer
--- questions (per drug, per pharmacy) go straight to fct_claim — we don't
--- pre-aggregate every possible combination, that only creates tables nobody
--- knows whether to trust.
+-- converted nothing has to show up as a zero, or the hole in the series reads as
+-- a gentle decline and nobody notices. Finer questions (per drug, per pharmacy)
+-- go straight to `fct_claim` — pre-aggregating every combination only creates
+-- tables nobody knows whether to trust.
 --
 -- ## Two different reversal numbers, on purpose
 --
--- A reversal has two dates — the day of the fill and the day of the reversal —
--- and 26% of them fall in different months. One column cannot mean both, so
--- there are two, and neither is called `reverted_claims`:
+-- A reversal has two dates — the fill and the reversal — and 26% of them fall in
+-- different months. One column cannot mean both, so there are two, and neither is
+-- called `reverted_claims`:
 --
--- * `claims_filled_then_reverted` — of the claims *filled* on this day, how many
---   were ever reverted. A **cohort** measure: it keys on `filled_date`, it is
---   what `cohort_reversal_rate` divides, and it is the honest way to compare
---   partners ("does Druid Rx send fills that stick?").
--- * `reverts_on_day` — how many reversals actually *happened* on this day, keyed
---   on `reverted_at`, with `revenue_reversed_cents` next to it. An **activity**
---   measure: this is the one that answers "what did we hand back last week?"
+-- * `claims_filled_then_reverted` — of the claims *filled* this day, how many
+--   were ever reverted. A **cohort** measure, keyed on `filled_date`; it's what
+--   `cohort_reversal_rate` divides, and the honest way to compare partners
+--   ("does Druid Rx send fills that stick?").
+-- * `reverts_on_day` — how many reversals actually *happened* this day, keyed on
+--   `reverted_at`, with `revenue_reversed_cents` beside it. An **activity**
+--   measure: "what did we hand back last week?"
 --
--- Summing the two over the whole period gives the same total. Summing them over
--- any shorter window does not, and that difference is the point.
+-- Over the whole period both sum to 2,739. Over any shorter window they don't,
+-- and that difference is the point.
 
 with lookups as (
 

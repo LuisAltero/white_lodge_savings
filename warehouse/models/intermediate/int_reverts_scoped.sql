@@ -1,15 +1,12 @@
--- Reversals that survived staging, resolved against the analysable claim
--- universe.
+-- Reversals that survived staging, resolved against the analysable claim universe.
 --
 -- `orphan_claim_id` (53 rows): the reversal arrived but the claim it invalidates
--- isn't in our universe — either it never landed, or it was itself rejected
--- (malformed) or excluded (unknown NPI). Applying that reversal would be a
--- no-op; ignoring it silently would hide an ingestion gap.
+-- isn't in our universe — it never landed, or was itself rejected or excluded.
+-- Applying it would be a no-op; ignoring it silently would hide an ingestion gap.
 --
--- Out of scope, not malformed: these reverts are well formed, and if the missing
--- claim shows up in a later batch they start applying by themselves. That's why
--- the rule lives here rather than in `stg_reverts`, and why the column is named
--- `scope_exclusion_reason` — see `int_claims_scoped` for the full argument.
+-- Out of scope, not malformed: these reverts are well formed, and they start
+-- applying by themselves if the missing claim shows up in a later batch. That's
+-- why the rule is here and not in `stg_reverts` — see `int_claims_scoped`.
 
 with reverts as (
 

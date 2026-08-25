@@ -1,31 +1,29 @@
--- Everything blocked before the marts, with a reason, a class, and the original
--- text that arrived.
+-- Everything blocked before the marts, with a reason, a class, and the text that
+-- arrived.
 --
 -- ## Two layers, one table
 --
--- Records leave the pipeline at two different points, for two different kinds of
--- reason, and this table is where both surface:
---
 -- * **staging** rejects what it can see in the row itself — `stg_claims`,
 --   `stg_reverts`, `stg_lookups` and their `dq_reject_reason`.
--- * **intermediate** excludes what needs another table to decide —
---   `int_claims_scoped`, `int_reverts_scoped` and their
---   `scope_exclusion_reason`.
+-- * **intermediate** excludes what needs a second table — `int_claims_scoped`,
+--   `int_reverts_scoped` and their `scope_exclusion_reason`.
+--
+-- `detected_in` names which layer stopped the row, so changing a rule starts with
+-- knowing which file to open.
 --
 -- ## Why `defect_class` is the column that matters
 --
--- Counting rejects tells you how much you lost. It doesn't tell you what to do
--- about it, and the three answers are completely different:
+-- Counting rejects tells you how much you lost. It doesn't tell you what to do,
+-- and the three answers are completely different:
 --
 -- | class | what it means | who fixes it |
 -- |---|---|---|
 -- | `malformed` | the file carried garbage — `"one hundred"` in a price, `2026-13-45` in a timestamp | the data producer; the row never returns on its own |
--- | `ambiguous` | the data is well formed but self-contradictory — one UUID on two different claims | a human, once, with a rule we don't have yet |
--- | `out_of_scope` | a valid record about something we don't have on file — a pharmacy that isn't in the reference data | nobody; it returns by itself when reference data catches up |
+-- | `ambiguous` | well formed but self-contradictory — one UUID on two different claims | a human, once, with a rule we don't have yet |
+-- | `out_of_scope` | a valid record about something we don't have on file — a pharmacy missing from the reference data | nobody; it returns by itself when reference data catches up |
 --
--- That last row is 460 claims of real revenue. Before this column existed they
--- were counted in the same bucket as unreadable numbers, which made
--- "how much of what I rejected is recoverable?" a question nobody could answer.
+-- That last row is 460 claims of real revenue. Sharing one bucket with unreadable
+-- numbers made "how much of what I rejected is recoverable?" unanswerable.
 --
 --     select defect_class, reject_reason, count(*)
 --     from marts.dq_rejects group by 1, 2 order by 3 desc;

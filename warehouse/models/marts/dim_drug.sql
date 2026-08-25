@@ -1,17 +1,16 @@
 -- One row per NDC seen in our events, with NADAC attributes.
 --
 -- The grain is *the NDC that appears in our data*, not the whole NADAC catalogue
--- (998k rows, 26k drugs we never dispense). A dimension describes our business.
+-- (32k drugs we never dispense). A dimension describes our business.
 --
--- Attributes come from the drug's most recent NADAC snapshot — commercial
--- description and brand/generic classification don't change week to week. What
--- changes is price, and price is not a dimension attribute; it's a fact measure
--- (`int_claim_cost`).
+-- Attributes come from the drug's most recent snapshot — description and
+-- brand/generic classification don't change week to week. What changes is price,
+-- and price is not a dimension attribute; it's a fact measure (`int_claim_cost`).
 --
--- `is_in_nadac = false` marks the NDCs that never match (three in the sample:
--- 77777000303, 88888000202, 99999000101). They stay in the dimension because
--- they generated real claims with real revenue — they just have no cost, and
--- therefore no computable margin. Dropping them would hide genuine volume.
+-- `is_in_nadac = false` marks the NDCs that never match (three here: 77777000303,
+-- 88888000202, 99999000101). They stay because they generated real claims with
+-- real revenue — they simply have no cost, and so no computable margin. Dropping
+-- them would hide genuine volume.
 
 with observed_ndcs as (
 

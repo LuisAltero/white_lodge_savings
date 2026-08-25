@@ -1,28 +1,22 @@
--- One claim event per row, typed, with its rejection reason attached.
+-- One claim per row, typed, carrying its rejection reason.
 --
--- **Source-local only.** This model reads `raw.claims` and nothing else — no
--- `ref()` to another staging model. Every rule below is decidable by looking at
--- the row itself, or at the batch it arrived in. The rule that needs the
--- pharmacy reference data ("is this NPI one of ours?") is a *relational*
--- question, and it lives one layer up in `int_claims_scoped`.
+-- **Quarantine, never drop.** Every row comes out with a `dq_reject_reason` —
+-- NULL when it's clean. Downstream models filter on NULL; `dq_rejects` collects
+-- the rest with the original text that arrived.
 --
--- That split is not bookkeeping. A row rejected here is **malformed** — the data
--- producer has to fix it, and it never comes back on its own. A row excluded up
--- there is **out of scope** — it is a perfectly good claim whose pharmacy we
--- don't have on file, and it returns by itself the day that pharmacy is
--- onboarded. Same 460 rows, completely different follow-up.
+-- **Source-local.** Reads `raw.claims` and nothing else. Every rule here is
+-- decidable from the row, or from the batch it arrived in. "Is this NPI one of
+-- ours?" needs the pharmacy reference, so it lives in `int_claims_scoped`.
 --
--- Malformed-record policy: **quarantine, don't drop**. No row disappears here.
--- Every one comes out with a `dq_reject_reason` — NULL when it's clean.
--- Downstream models filter on NULL; `dq_rejects` collects the rest with the
--- reason and the original text that arrived.
+-- That split is semantic, not bookkeeping. A row rejected here is **malformed**:
+-- the producer has to fix it and it never returns. A row excluded up there is
+-- **out of scope**: a good claim whose pharmacy we don't have on file yet.
 --
--- The CASE ordering *is* the policy, and it is deliberate: most structural
--- defect first, most semantic last. A row with a missing field *and* an
--- unreadable number is reported as `missing_required_field`, because that's the
--- problem the data producer has to fix first. Precedence survives the layer
--- split for free: `int_claims_scoped` only ever sees rows that passed here, so a
--- row that is both malformed and out of scope is still reported as malformed.
+-- **The CASE ordering is the policy** — most structural defect first. A row with
+-- a missing field *and* an unreadable number reports as `missing_required_field`,
+-- because that's what the producer has to fix first. The ordering also survives
+-- the layer split for free: only clean rows reach `int_claims_scoped`, so a claim
+-- that is both malformed and out of scope still reports as malformed.
 
 with source as (
 

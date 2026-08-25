@@ -1,24 +1,20 @@
--- Price lookups — the top of the funnel. 177k events, the largest source here.
--- Source-local: typing and normalisation only, no `ref()` to another model.
+-- Price lookups — the top of the funnel, and the largest event stream at 177k
+-- rows. Source-local: typing and normalisation only.
 --
--- Two policy choices, and neither of them is dropping the row:
+-- Two policy choices, and neither of them drops the row:
 --
--- 1. **Missing partner (886 rows) becomes `unknown`, not a rejection.**
---    Checked before deciding: none of those 886 converted. They are real lookup
---    events that merely lost their commercial attribution. Dropping them would
---    shrink the funnel denominator and inflate everyone else's conversion rate
---    — trading incomplete data for a wrong number.
+-- 1. **Missing partner (886 rows) becomes `unknown`, not a rejection.** Checked
+--    before deciding: none of the 886 converted. They are real events that merely
+--    lost their commercial attribution. Dropping them would shrink the funnel
+--    denominator and inflate everyone else's conversion rate.
+-- 2. **Channel is normalised, not validated.** The brief calls the list open, so
+--    `fax`, `phone` and `APP` are legitimate low-volume channels (`APP` is just
+--    uppercase). Rejecting unknown channels would be staging deciding which lines
+--    of business exist.
 --
--- 2. **Channel is normalised, not validated.** The brief describes `channel` as
---    "e.g. integration, website" — the list is open. `fax`, `phone` and `APP`
---    are legitimate low-volume channels; `APP` is just uppercase. We lowercase,
---    and send empty to `unknown`. Rejecting on unknown channel would be staging
---    deciding which lines of business exist.
---
--- `claim_id` comes out here exactly as it arrived. Deciding whether it points at
--- a claim we can actually analyse needs the claim universe, so that resolution
--- — and the `converted` flag that comes with it — lives in
--- `int_lookups_resolved`.
+-- `claim_id` comes out exactly as it arrived. Deciding whether it points at a
+-- claim we can analyse needs the claim universe, so that resolution — and the
+-- `converted` flag with it — lives in `int_lookups_resolved`.
 
 with source as (
 
