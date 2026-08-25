@@ -19,14 +19,25 @@ class FakeResponse(io.BytesIO):
         return False
 
 
-def test_resolve_download_url_picks_the_csv_distribution(monkeypatch):
-    """The catalog may list several distributions; we want the CSV."""
-    payload = {
-        "distribution": [
-            {"data": {"format": "json", "downloadURL": "https://example.test/x.json"}},
-            {"data": {"format": "csv", "downloadURL": "https://example.test/nadac.csv"}},
-        ]
-    }
+# The metastore serves two shapes and has switched between them in the life of
+# this project. Both are pinned here: this test used to cover only the nested
+# one, so it passed green while a cold `pipeline.run` failed against the live API.
+DISTRIBUTION_SHAPES = {
+    "dcat_flattened": [
+        {"format": "json", "downloadURL": "https://example.test/x.json"},
+        {"format": "csv", "downloadURL": "https://example.test/nadac.csv"},
+    ],
+    "nested_under_data": [
+        {"data": {"format": "json", "downloadURL": "https://example.test/x.json"}},
+        {"data": {"format": "csv", "downloadURL": "https://example.test/nadac.csv"}},
+    ],
+}
+
+
+@pytest.mark.parametrize("shape", sorted(DISTRIBUTION_SHAPES))
+def test_resolve_download_url_picks_the_csv_distribution(monkeypatch, shape):
+    """The catalog lists several distributions, in either of two shapes."""
+    payload = {"distribution": DISTRIBUTION_SHAPES[shape]}
     monkeypatch.setattr(
         nadac.urllib.request, "urlopen",
         lambda *a, **k: FakeResponse(json.dumps(payload).encode()),

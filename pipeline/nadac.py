@@ -38,8 +38,13 @@ def resolve_download_url(dataset_id: str = NADAC_DATASET_ID, timeout: int = 60) 
         meta = json.load(resp)
 
     for dist in meta.get("distribution", []):
-        data = dist.get("data", {})
-        if data.get("format", "").lower() == "csv" and data.get("downloadURL"):
+        # The metastore serves two shapes for a distribution and has switched
+        # between them: DCAT-flattened (format/downloadURL at the top level) and
+        # reference-style (the same keys nested under "data"). Accept both — the
+        # cached CSV means a break here only surfaces on a cold clone, which is
+        # the worst moment to find out.
+        data = dist.get("data") or dist
+        if str(data.get("format", "")).lower() == "csv" and data.get("downloadURL"):
             return data["downloadURL"]
 
     raise RuntimeError(
