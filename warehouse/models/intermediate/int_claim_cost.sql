@@ -2,9 +2,16 @@
 --
 -- ## The decision: as-of the fill date
 --
--- NADAC is a series of weekly snapshots — the same NDC appears 33 times in 2026
--- alone. "The cost of this drug" is not a number. We chose: **the last price in
--- force on the date the claim was filled**.
+-- NADAC is a series of weekly snapshots — the same NDC carries up to 9 different
+-- prices across 2026 (8.1 on average). "The cost of this drug" is not a number.
+-- We chose: **the last price in force on the date the claim was filled**.
+--
+-- Note which date. `effective_date` is when a price took effect; `as_of_date` is
+-- when CMS last republished it, 21 to 28 days later. The question here is
+-- economic ("what did this drug cost that day"), so it joins on the business
+-- date. Joining on the publication date would price every claim three weeks
+-- stale: $7.7M of acquisition cost, 3.8%, against a $12.9M margin. `as_of_date`
+-- would be the right key only for an audit — "what did we know at the time".
 --
 -- Why: it's the cost the market was actually charging on the day of the
 -- transaction, so March margin is computed with March cost. And it's *stable* —

@@ -42,8 +42,10 @@ The original brief is preserved at [`docs/ASSIGNMENT.md`](docs/ASSIGNMENT.md).
 | `make query` | opens a read-only SQL shell on the warehouse |
 | `make rebuild` | drops the database and rebuilds from scratch |
 
-Without `make` (Windows), every target is one line — `python -m pipeline.run`
-does the whole build.
+On Windows: `winget install ezwinports.make`. Every recipe is shell-free by
+design, so the targets behave identically there, on macOS and on Linux. Without
+`make` at all, each target is still one line — `python -m pipeline.run` does the
+whole build.
 
 **Source directories are flags**, as the brief asks, defaulting to `sample-data/`:
 
@@ -80,6 +82,67 @@ Schemas are named plainly — `marts.fct_claim`, not dbt's default
 `main_marts.fct_claim`. That override (`macros/generate_schema_name.sql`) exists
 because the default is there to stop developers overwriting each other in a
 shared warehouse, and here everyone has their own local file.
+
+### Every table, in flow order
+
+Six raw tables in, 23 models, 29 tables and views in total. The spine reads top
+to bottom; row counts are from the sample data.
+
+```
+  raw.*   claims 42,840 · lookups 177,565 · reverts 2,842
+          pharmacies 37 · partners 6 · nadac 998,332
+            │
+            │  pipeline/land.py — every column VARCHAR, nothing interpreted
+            ▼
+  staging.*  stg_claims 42,840 · stg_lookups 177,565 · stg_reverts 2,842
+             stg_pharmacies 37 · stg_partners 6 · stg_nadac 262,847
+            │
+            │  typed and cast; each row tagged with dq_reject_reason.
+            │  Source-local: no ref() between them, so the layer is a flat
+            │  fan-out and stg_nadac's qualify is the only dedup that runs here.
+            ▼
+  int_claims_scoped  41,860   ◄── THE HUB
+            │  valid claims, each tagged in or out of scope. Everything
+            │  relational downstream starts from this one model.
+            │
+            ├──► int_reverts_scoped   2,792 ──► int_claim_revert       2,739
+            ├──► int_lookups_resolved 176,721 ─► int_claim_attribution 40,577
+            ├──► int_claim_cost       41,400   (+ stg_nadac — the ASOF JOIN)
+            └──► int_claim_economics  41,400   (+ stg_partners — the fee split)
+                        │
+                        ▼
+                  fct_claim  41,400          (+ dim_pharmacy)
+                        │
+                        ▼
+                  fct_lookup 176,721         (+ int_lookups_resolved)
+                        │
+          ┌─────────────┼──────────────┐
+          ▼             ▼              ▼
+  mart_partner_   mart_drug_     mart_funnel_
+  performance 8   economics 49   daily 2,126
+```
+
+Four dimensions and the quarantine hang off the side of that spine rather than
+sitting in it:
+
+| table | rows | built from |
+|---|---:|---|
+| `dim_pharmacy` | 37 | `stg_pharmacies` — and feeds `fct_claim`, so `chain` has one source |
+| `dim_partner` | 8 | `stg_partners` + the two synthetic members, `direct` and `unknown` |
+| `dim_drug` | 49 | `stg_nadac` + the NDCs actually seen in claims and lookups |
+| `dim_date` | 153 | the union of every date any fact can carry: fill, lookup, revert |
+| `dq_rejects` | 2,387 | both quarantine layers unioned — `staging` defects and `intermediate` scope exclusions |
+
+Three counts in that diagram are worth reading rather than skimming:
+
+- **`stg_nadac` 998,332 → 262,847.** The `qualify` collapsing CMS's weekly
+  republications to one row per `(ndc, effective_date)`. See decision 2.
+- **`stg_claims` 42,840 → `int_claims_scoped` 41,860 → `fct_claim` 41,400.** 980
+  defective claims stopped in staging (699 malformed, 281 ambiguous duplicates)
+  and 460 out-of-scope ones stopped in intermediate. All 1,440 land in
+  `dq_rejects`; nothing is dropped silently.
+- **`int_claim_attribution` 40,577 against `fct_claim` 41,400.** The 823 claims
+  with no lookup at all — they become `direct`, not NULL.
 
 ### The marts
 
@@ -149,7 +212,7 @@ Verified end to end: querying in a loop across a full `pipeline.run`, 60 queries
 
 [`analysis/analysis.ipynb`](analysis/analysis.ipynb) ships with its outputs
 executed — it reads in a browser without installing anything — and doubles as the
-live-session scratchpad. `analysis/wls.py` behind it is deliberately four query
+live-session scratchpad. `analysis/wls.py` behind it is deliberately three query
 helpers and two formatters; **charts are plain `plotly.express`**, because the
 fastest chart to change live is the one whose API the room already knows. The
 `.ipynb` is the source: edit it in Jupyter, and `make notebook` re-executes it.
@@ -222,10 +285,19 @@ from `group by partner` and the fact total stops matching the sum of its parts.
 ### 2. NADAC cost is as-of the fill date
 *→ `models/intermediate/int_claim_cost.sql`*
 
-The same NDC appears 33 times in 2026 alone, so "the cost of this drug" is not a
-number. **Chosen: the last price in force on the fill date**, resolved with
-DuckDB's `ASOF JOIN` — it's the cost the market was charging that day, and it's
-stable, which "latest snapshot" is not.
+The same NDC carries up to 9 different prices across 2026 (8.1 on average), so
+"the cost of this drug" is not a number. **Chosen: the last price in force on
+the fill date**, resolved with DuckDB's `ASOF JOIN` — it's the cost the market
+was charging that day, and it's stable, which "latest snapshot" is not.
+
+Those 9 prices arrive as **33 rows**: CMS republishes the in-force price every
+week under a new `as_of_date` until it changes. `effective_date` is when a price
+took effect, `as_of_date` is when CMS last confirmed it — a 21-to-28-day lag. The
+`qualify` at the foot of `stg_nadac` collapses the republications to one row per
+`(ndc, effective_date)`, keeping the most recent confirmation; two rows on the
+same key would make the `ASOF JOIN` ambiguous. Joining on `as_of_date` instead
+would price every claim three weeks stale — **$7.7M of acquisition cost, 3.8%**,
+against a total margin of $12.9M.
 
 **I measured what the choice is worth.** Against "latest snapshot for
 everything", total acquisition cost differs by **−0.31%** in aggregate — but NDC
@@ -440,25 +512,28 @@ to partners and retained **$183,645** — a blended retention of 64.7%. The funn
 
 ### Dale — "who's our most valuable partner, and how do they compare to the second-best?"
 
-Chain: **`meridian`**, the largest by volume (11,139 claims, $51.4M GMV) and so
-where a renegotiation moves the most money.
+Chain: **`meridian`**, the largest by volume (10,271 net claims, $51.4M net GMV)
+and so where a renegotiation moves the most money.
 
-| partner | terms | claims | fee collected | payout | **White Lodge keeps** | retention |
-|---|---|---:|---:|---:|---:|---:|
-| **Kafka Rx** | $1.00 flat | 3,253 | $22,542 | $3,052 | **$19,490** | 86.5% |
-| Hudi Rx | 50% | 3,046 | $20,240 | $10,127 | $10,113 | 50.0% |
-| Druid Rx | 20% | 1,524 | $10,011 | $2,002 | $8,009 | 80.0% |
-| Iceberg Rx | $0.20 flat | 904 | $6,184 | $170 | $6,014 | 97.3% |
-| Airflow Rx | $0.00 flat | 412 | $2,640 | $0 | $2,640 | 100% |
-| Flink Rx | 80% | 1,764 | $12,335 | $9,868 | $2,467 | 20.0% |
-| *direct* | — | 236 | $1,525 | $0 | $1,525 | 100% |
+Every column below is **net of reversals** — a reversed fill is counted nowhere,
+neither in the claim count nor in the money it would have earned. Gross claims
+are shown alongside because the gap is itself informative.
+
+| partner | terms | net claims | (gross) | fee collected | payout | **White Lodge keeps** | retention |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **Kafka Rx** | $1.00 flat | 3,052 | 3,253 | $22,542 | $3,052 | **$19,490** | 86.5% |
+| Hudi Rx | 50% | 2,759 | 3,046 | $20,240 | $10,127 | $10,113 | 50.0% |
+| Druid Rx | 20% | 1,364 | 1,524 | $10,011 | $2,002 | $8,009 | 80.0% |
+| Iceberg Rx | $0.20 flat | 849 | 904 | $6,184 | $170 | $6,014 | 97.3% |
+| Airflow Rx | $0.00 flat | 372 | 412 | $2,640 | $0 | $2,640 | 100% |
+| Flink Rx | 80% | 1,659 | 1,764 | $12,335 | $9,868 | $2,467 | 20.0% |
+| *direct* | — | 216 | 236 | $1,525 | $0 | $1,525 | 100% |
 
 **Kafka Rx, and it isn't close — but not for the reason the volume suggests.**
-Kafka and Hudi drive effectively the same business in meridian: 3,253 claims
-against 3,046, seven percent apart, and Hudi actually originates more fee
-overall. Kafka returns **1.9× the revenue** anyway, because Kafka is a $1.00 flat
-cut and Hudi takes half. On this chain the volume is a tie and the terms decide
-the whole thing.
+Kafka and Hudi drive comparable business in meridian: 3,052 net claims against
+2,759, and Hudi originates nearly as much fee. Kafka returns **1.9× the revenue**
+anyway, because Kafka is a $1.00 flat cut and Hudi takes half. Eleven percent
+more volume does not explain a 1.9× gap — the terms do.
 
 **The number worth walking into the renegotiation with is Flink Rx.** It is third
 by claims and second-best by conversion of the six (48.4%), and it is *last* by
@@ -492,12 +567,19 @@ Four levers, sized against the $183,645 retained today:
 
 | # | lever | worth | how fast |
 |---|---|---:|---|
-| 1 | **Price the fee to the value.** Take the >$10k band from 0.0089% to 0.05% — still **12× below** what we already charge the middle band | **+$49,366 (+27%)** | slow: it's a pricing change |
+| 1 | **Price the fee to the value.** Take the >$10k band from 0.0089% to 0.05% — still **12× below** what we already charge the middle band | **+$52,541 (+29%)** | slow: it's a pricing change |
 | 2 | **Renegotiate Flink Rx** from 80% to 50% | **+$16,563 (+9%)** | fast: one contract |
 | 3 | **Lift website conversion.** `integration` converts at 44.8%, `website` at 14.7% on 2.6× the volume | **+$5,458 per point** | medium: product work |
 | 4 | **Attack reversals.** $13,127 handed back, 7.1% of retained revenue, median 9.5 days to reverse | **+$6,564 if half is recovered** | medium: it's revenue already earned |
 
-Lever 1 is the answer to the question as asked, and I'd say plainly that I don't
+Lever 1 is sized by repricing each claim in the band and running it back through
+the *actual* fee split — flat partners keep taking a flat cut of a bigger fee,
+percentage partners take their share of it — rather than applying the blended
+64.7% retention, which is a portfolio average and doesn't describe the partners
+who originate high-value fills. The shortcut would say $49,366; per contract it
+is $52,541.
+
+It's the answer to the question as asked, and I'd say plainly that I don't
 know the contractual or competitive constraints on it — the sizing shows what
 even a timid move is worth, not what the market will bear. Lever 2 is the one to
 do this quarter regardless.
@@ -528,7 +610,7 @@ queries stop touching most of the data. Landing stays Python; the format changes
 
 **3. The NADAC as-of join is what I'd watch** — the one operation whose cost
 grows super-linearly with both sides. Two mitigations in order: restrict
-`stg_nadac` to the NDCs we actually dispense (49 of 26,000 today, a 500×
+`stg_nadac` to the NDCs we actually dispense (49 of 32,436 today, a 660×
 reduction that costs nothing analytically), then collapse the weekly snapshots
 into effective-dated ranges so the join hits a much smaller interval table.
 
