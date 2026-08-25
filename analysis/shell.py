@@ -6,11 +6,9 @@ The DuckDB Python package ships no `__main__`, so `python -m duckdb` is not a
 shell. This is: a read-only connection plus a read-eval-print loop that prints
 the result of whatever SQL you type.
 
-Read-only *and* short-lived. DuckDB allows one writer per file and its read lock
-excludes that writer too, so a shell holding any open connection blocks
-`python -m pipeline.run` — exactly the failure you don't want mid-session. This
-shell opens a connection per statement and closes it, so you can rebuild the
-warehouse in another terminal without quitting here.
+Read-only *and* short-lived: a connection per statement, not per session, so you
+can rebuild the warehouse in another terminal without quitting here. The reason
+DuckDB forces that is written up once, in `analysis/wls.py`.
 
     .tables            list every table, by schema
     .schema <table>    column names and types
@@ -50,14 +48,7 @@ order by
 
 
 def run(sql: str) -> None:
-    """Open a connection, run one statement, close it.
-
-    Per statement, not per session, for the same reason as `analysis/wls.py`:
-    DuckDB's read lock excludes a writer, so a shell left open on a persistent
-    connection blocks `python -m pipeline.run` — the rebuild you want to do
-    *while* this shell is open. Holding the lock only for the duration of a
-    statement costs ~13 ms and removes the conflict.
-    """
+    """Open a connection, run one statement, close it. Wait out a rebuild."""
     deadline = time.monotonic() + 60
     try:
         while True:

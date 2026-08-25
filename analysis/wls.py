@@ -11,8 +11,8 @@ chart to change is the one whose API the room already knows.
     px.bar(df, x="rev", y="partner", orientation="h")
 
 Every query opens its own read-only connection and closes it, so an open notebook
-never blocks `python -m pipeline.run`. See the note above `q()` — that is the
-detail that decides whether you can rebuild a model without restarting a kernel.
+never blocks `python -m pipeline.run` — the detail that decides whether you can
+rebuild a model without restarting a kernel. See `q()`.
 """
 
 from __future__ import annotations
@@ -27,38 +27,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATABASE = PROJECT_ROOT / "data" / "duckdb" / "warehouse.duckdb"
 
 
-# ---------------------------------------------------------------------------
-# Querying
-#
-# **One connection per query, opened and closed.** This is the single most
-# important line in this file for a live session, and it is not about tidiness.
-#
-# DuckDB allows one writer per file, and a *read* lock excludes that writer too.
-# A notebook that holds an open read-only connection therefore blocks
-# `python -m pipeline.run` for as long as the kernel lives — and a kernel lives
-# invisibly, long after you stopped looking at the notebook. The failure is
-# `IO Error: file is already in use`, at the exact moment you want to rebuild a
-# model and re-query it, which is the whole loop of a live debug session.
-#
-# Opening per call holds the lock for the duration of the query instead of the
-# duration of the kernel. Measured cost: ~13 ms of connection setup, against
-# ~250 ms for a real group-by on fct_claim. Roughly 5%, and invisible when a
-# human is typing.
-# ---------------------------------------------------------------------------
-
 # How long a query waits for a rebuild to finish before giving up. A full
 # `python -m pipeline.run` takes ~10 s; 60 covers it with room to spare.
 _LOCK_WAIT_SECONDS = 60
 
 
 def q(sql: str) -> pd.DataFrame:
-    """Run SQL, return a DataFrame. Connection is opened and closed per call.
+    """Run SQL, return a DataFrame. **One connection per call, opened and closed.**
 
-    Waits, rather than failing, if the pipeline happens to be rebuilding: the
-    lock is exclusive in both directions, so while `pipeline.run` holds the file
-    a reader can't open it either. That window is the ~10 s of a build, and the
-    useful behaviour in a live session is for the cell to take a moment longer
-    and then work — not to raise while somebody is watching.
+    Not tidiness — this is the most important decision in the file for a live
+    session. DuckDB allows one writer per file, and its *read* lock excludes that
+    writer too. A notebook holding an open connection blocks
+    `python -m pipeline.run` for as long as the kernel lives, and a kernel lives
+    invisibly long after you stopped looking at it. The failure lands exactly
+    when you want to rebuild a model and re-query it — the whole loop of a live
+    debug session. Opening per call costs ~13 ms against ~250 ms for a real
+    group-by: roughly 5%, invisible while a human types.
+
+    The lock is exclusive both ways, so during the ~10 s of a build a reader
+    can't open the file either. Hence the wait rather than a raise: a cell that
+    takes a moment longer beats a traceback with an audience.
     """
     if not DATABASE.exists():
         raise FileNotFoundError(

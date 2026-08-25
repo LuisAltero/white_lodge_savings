@@ -1,32 +1,29 @@
 """Land raw files into `raw.*` DuckDB tables. Nothing is interpreted here.
 
-**Every column lands as VARCHAR.** That is the most important decision in this
-file, and the reason is **determinism**, not any single field.
+**Every column lands as VARCHAR**, and the reason is **determinism**, not any
+single field.
 
 DuckDB's type inference samples roughly the first 20k rows and commits to a type
-from what it sees. So how a file lands depends on what else arrived in the same
-batch: 25,000 clean prices followed by one `"one hundred"` makes the sampler pick
-DOUBLE and the read then dies with `JSON transform error` — one bad row out of
-25,001 takes the whole ingest down, and *which* row does that depends on where it
-happened to sit in the file. Declaring the schema means the same input always
-lands the same way, and a bad value becomes one documented row in `dq_rejects`
-instead of a failed run.
+from what it sees, so how a file lands depends on what else arrived in the same
+batch. 25,000 clean prices followed by one `"one hundred"` makes the sampler pick
+DOUBLE and the read dies with `JSON transform error` — one bad row out of 25,001
+takes the whole ingest down, and *which* row does that depends on where it sat in
+the file. Declaring the schema means the same input always lands the same way,
+and a bad value becomes one documented row in `dq_rejects` instead of a failed
+run. Every cast then happens in dbt staging, where a failed cast gets a reason
+rather than becoming an orphaned NULL.
 
-There's a second, smaller reason: `_source_file` and the raw text are the audit
-trail. `price: "one hundred"` has to survive verbatim, or `dq_rejects` can say
-"unreadable number" without being able to show what the number was.
+Second reason: the raw text is the audit trail. `price: "one hundred"` has to
+survive verbatim, or `dq_rejects` can say "unreadable number" without being able
+to show what the number was. `_source_file` and `_ingested_at` are on every table
+for the same purpose — when a number looks wrong live, step one is finding the
+file that carried it.
 
 *Not* a reason, despite being the obvious one to reach for: leading zeros.
-Current DuckDB preserves `"00078050161"` on its own — the value is quoted in the
-JSON, and the CSV sniffer detects the leading zero and declines to numerify it.
-Verified in both formats. The test in `tests/test_landing.py` stays as a
-regression guard, but the zero is not what this decision buys.
-
-Every cast happens in dbt staging, where a failed cast becomes a row in
-`dq_rejects` with a reason — not an orphaned NULL.
-
-We also record `_source_file` and `_ingested_at` on every table: when a number
-looks wrong in a live session, step one is finding the file that carried it.
+Current DuckDB preserves `"00078050161"` on its own, in JSON (the value is
+quoted) and in CSV (the sniffer detects the zero and declines to numerify).
+Verified in both. The test in `tests/test_landing.py` stays as a regression
+guard, but the zero is not what this decision buys.
 """
 
 from __future__ import annotations

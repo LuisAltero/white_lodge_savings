@@ -10,11 +10,9 @@ The decision is about **determinism**. DuckDB's type inference samples the first
 same dirty value is harmless in one run and fatal in the next. Declaring the
 schema makes ingestion behave the same way every time.
 
-(Worth stating precisely, because the older justification for this was wrong:
-current DuckDB does *not* strip the leading zero from an NDC. It stays VARCHAR in
-JSON — the value is quoted in the file — and the CSV sniffer detects the leading
-zero and refuses to numerify it. Verified in both formats. The zero survives; the
-determinism doesn't.)
+Not about leading zeros, despite the obvious guess — current DuckDB preserves
+them on its own in both JSON and CSV. Verified. The zero survives; the
+determinism doesn't.
 """
 
 from __future__ import annotations

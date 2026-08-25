@@ -64,10 +64,6 @@ def ensure_nadac(dest_dir: Path, refresh: bool = False, timeout: int = 600) -> P
     url = resolve_download_url(timeout=min(timeout, 60))
     target = dest_dir / url.rsplit("/", 1)[-1]
 
-    if target.exists() and not refresh:
-        print(f"[nadac] using cache: {target.name}", flush=True)
-        return target
-
     print(f"[nadac] downloading {url}", flush=True)
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     # Write to .part and only then rename: a Ctrl+C mid-download must not leave a

@@ -16,22 +16,18 @@ endif
 
 DB     ?= data/duckdb/warehouse.duckdb
 
-# dbt has to run against warehouse/, but `cd warehouse && ...` puts a `&&` in the
-# recipe, and a `&&` is exactly what makes GNU Make hand the line to a shell. On
-# Windows without sh.exe on PATH that shell is cmd.exe, which reads `/` as a
-# switch character and fails with `'..' is not recognized`. These flags do the
-# same job with no shell involved, so every target runs the same way everywhere.
+# `cd warehouse && ...` would put a `&&` in the recipe, and a `&&` is what makes
+# make hand the line to a shell — cmd.exe on Windows, which reads `/` as a switch
+# and fails with `'..' is not recognized`. These flags do the same job with no
+# shell, so every target behaves the same on all three systems.
 #
 # --project-dir does *not* chdir, so profiles.yml's relative `../data/...` would
-# resolve against the repo root. Export the path absolute instead - the same
-# variable pipeline/run.py already sets.
+# resolve against the repo root. Hence the absolute export below.
 DBT     = $(PYTHON) -m dbt.cli.main
 DBT_DIR = --project-dir warehouse --profiles-dir warehouse
 export WLS_DUCKDB_PATH := $(abspath $(DB))
 
-# `rm` doesn't exist on Windows, and make can't run it via shell or directly.
-# Python is already a hard dependency of this project, so it's the one
-# remove-a-file command guaranteed to work on all three systems.
+# `rm` doesn't exist on Windows. Python does, and it's already required here.
 RM_DB   = $(PYTHON) -c "import pathlib; pathlib.Path('$(DB)').unlink(missing_ok=True)"
 RM_TREE = $(PYTHON) -c "import shutil,sys; [shutil.rmtree(p, ignore_errors=True) for p in sys.argv[1:]]"
 
