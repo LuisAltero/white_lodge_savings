@@ -83,7 +83,7 @@ select
     contracted_partner_fee_cents,
     least(contracted_partner_fee_cents, pbm_fee_cents) as partner_fee_cents,
     pbm_fee_cents - least(contracted_partner_fee_cents, pbm_fee_cents)
-        as wls_net_fee_cents,
+        as wls_fee_cents,
     contracted_partner_fee_cents > pbm_fee_cents as partner_fee_was_capped,
     greatest(contracted_partner_fee_cents - pbm_fee_cents, 0)
         as capped_shortfall_cents

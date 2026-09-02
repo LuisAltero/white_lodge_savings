@@ -18,8 +18,11 @@
 -- A reversed claim is as if it never happened, so the `net_*_cents` columns are
 -- already zeroed on reversed rows — summing with no filter gives the right
 -- number, rather than trusting everyone to remember `where not is_reverted`. The
--- unprefixed columns (`price_cents`, `pbm_fee_cents`, `wls_net_fee_cents`) are
--- the gross values, for measuring what was reversed.
+-- unprefixed columns (`price_cents`, `pbm_fee_cents`, `wls_fee_cents`) are the
+-- gross values, for measuring what was reversed.
+--
+-- The prefix carries the whole meaning: `net_` means *net of reversals*, and
+-- nothing else in this table uses the word.
 --
 -- ## Two dates: this is an accumulating snapshot
 --
@@ -91,7 +94,7 @@ assembled as (
         c.price_cents,
         c.pbm_fee_cents,
         e.partner_fee_cents,
-        e.wls_net_fee_cents,
+        e.wls_fee_cents,
         e.fee_model,
         e.partner_fee_was_capped,
         e.capped_shortfall_cents,
@@ -143,7 +146,7 @@ select
     case when is_reverted then 0 else price_cents end       as net_price_cents,
     case when is_reverted then 0 else pbm_fee_cents end     as net_pbm_fee_cents,
     case when is_reverted then 0 else partner_fee_cents end as net_partner_fee_cents,
-    case when is_reverted then 0 else wls_net_fee_cents end as net_wls_revenue_cents,
+    case when is_reverted then 0 else wls_fee_cents end as net_wls_revenue_cents,
     case when is_reverted then 0 else 1 end                 as net_claim_count
 
 from assembled

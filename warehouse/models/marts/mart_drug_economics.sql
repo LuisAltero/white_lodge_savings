@@ -36,7 +36,7 @@ by_drug as (
         sum(net_partner_fee_cents)          as net_partner_payout_cents,
 
         -- Revenue lost to reversals: what we would have retained on reverted claims.
-        sum(wls_net_fee_cents) filter (where is_reverted)
+        sum(wls_fee_cents) filter (where is_reverted)
             as revenue_at_risk_from_reversals_cents,
 
         sum(est_acquisition_cost_cents) filter (where not is_reverted)

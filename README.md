@@ -178,7 +178,7 @@ if the fill never happened, so `net_price_cents`, `net_wls_revenue_cents` and
 select sum(net_wls_revenue_cents) from marts.fct_claim;
 
 -- Gross, for measuring what was reversed:
-select sum(wls_net_fee_cents) filter (where is_reverted) from marts.fct_claim;
+select sum(wls_fee_cents) filter (where is_reverted) from marts.fct_claim;
 ```
 
 The design intent is that the *easy* query is the *correct* one. Forgetting a

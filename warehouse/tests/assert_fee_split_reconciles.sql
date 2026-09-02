@@ -8,7 +8,7 @@ select
     claim_id,
     pbm_fee_cents,
     partner_fee_cents,
-    wls_net_fee_cents,
-    partner_fee_cents + wls_net_fee_cents as reconstructed
+    wls_fee_cents,
+    partner_fee_cents + wls_fee_cents as reconstructed
 from {{ ref('int_claim_economics') }}
-where partner_fee_cents + wls_net_fee_cents <> pbm_fee_cents
+where partner_fee_cents + wls_fee_cents <> pbm_fee_cents

@@ -31,7 +31,7 @@ unit_tests:
           - {partner: "Kafka Rx", fee_model: "flat", flat_fee_cents: 100, fee_rate: null}
     expect:
       rows:
-        - {claim_id: "c1", partner_fee_cents: 100, wls_net_fee_cents: 400, partner_fee_was_capped: false}
+        - {claim_id: "c1", partner_fee_cents: 100, wls_fee_cents: 400, partner_fee_was_capped: false}
 
   - name: fee_split_percentage_partner
     description: >
@@ -50,7 +50,7 @@ unit_tests:
           - {partner: "Flink Rx", fee_model: "percentage", flat_fee_cents: null, fee_rate: 0.8}
     expect:
       rows:
-        - {claim_id: "c2", partner_fee_cents: 400, wls_net_fee_cents: 100, partner_fee_was_capped: false}
+        - {claim_id: "c2", partner_fee_cents: 400, wls_fee_cents: 100, partner_fee_was_capped: false}
 
   - name: fee_split_percentage_rounds_without_losing_cents
     description: >
@@ -70,7 +70,7 @@ unit_tests:
           - {partner: "Odd Rx", fee_model: "percentage", flat_fee_cents: null, fee_rate: 0.33}
     expect:
       rows:
-        - {claim_id: "c3", partner_fee_cents: 33, wls_net_fee_cents: 68}
+        - {claim_id: "c3", partner_fee_cents: 33, wls_fee_cents: 68}
 
   - name: fee_split_caps_partner_at_collected_fee
     description: >
@@ -90,7 +90,7 @@ unit_tests:
           - {partner: "Kafka Rx", fee_model: "flat", flat_fee_cents: 100, fee_rate: null}
     expect:
       rows:
-        - {claim_id: "c4", partner_fee_cents: 50, wls_net_fee_cents: 0,
+        - {claim_id: "c4", partner_fee_cents: 50, wls_fee_cents: 0,
            partner_fee_was_capped: true, capped_shortfall_cents: 50}
 
   - name: fee_split_direct_claim_keeps_whole_fee
@@ -109,7 +109,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {claim_id: "c5", partner: "direct", partner_fee_cents: 0, wls_net_fee_cents: 700}
+        - {claim_id: "c5", partner: "direct", partner_fee_cents: 0, wls_fee_cents: 700}
 
   - name: fee_split_zero_fee_partner_is_not_missing_data
     description: >
@@ -130,7 +130,7 @@ unit_tests:
     expect:
       rows:
         - {claim_id: "c6", partner: "Airflow Rx", fee_model: "flat",
-           partner_fee_cents: 0, wls_net_fee_cents: 700}
+           partner_fee_cents: 0, wls_fee_cents: 700}
 
   - name: fee_split_ignores_out_of_scope_claims
     description: >
@@ -149,7 +149,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {claim_id: "ok", partner: "direct", partner_fee_cents: 0, wls_net_fee_cents: 300}
+        - {claim_id: "ok", partner: "direct", partner_fee_cents: 0, wls_fee_cents: 300}
 
   # ---------- reversals ----------
 

@@ -87,6 +87,8 @@ models:
         data_tests: [unique, not_null]
       - name: partner_fee_cents
         data_tests: [not_null]
-      - name: wls_net_fee_cents
-        description: Never negative — the least() cap guarantees it.
+      - name: wls_fee_cents
+        description: >
+          What White Lodge keeps of the pbm_fee, after the partner payout and
+          before any reversal. Never negative — the least() cap guarantees it.
         data_tests: [not_null]

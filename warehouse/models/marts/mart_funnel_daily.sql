@@ -54,7 +54,7 @@ claims as (
 
 ),
 
--- Keyed on the reversal date: the activity side. `wls_net_fee_cents` and not
+-- Keyed on the reversal date: the activity side. `wls_fee_cents` and not
 -- `net_wls_revenue_cents` — the net_* columns are already zeroed on a reverted
 -- row, so the amount handed back is the gross one.
 reverts as (
@@ -64,7 +64,7 @@ reverts as (
         partner,
         channel,
         count(*)               as reverts_on_day,
-        sum(wls_net_fee_cents) as revenue_reversed_cents,
+        sum(wls_fee_cents) as revenue_reversed_cents,
         sum(price_cents)       as gmv_reversed_cents
     from {{ ref('fct_claim') }}
     where is_reverted
